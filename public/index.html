@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home Energy Management System</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-left">
+        <i class="fa-solid fa-bolt logo-icon"></i>
+        <h1>Home Energy Management System</h1>
+      </div>
+      <div class="header-right">
+        <!-- Theme Toggle -->
+        <button id="theme-toggle-btn" class="theme-btn" title="Chuyển đổi giao diện Sáng/Tối">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <!-- Voice Command Controls -->
+        <div class="voice-control-container">
+          <span id="voice-status-text">Ra lệnh bằng giọng nói</span>
+          <button id="voice-mic-btn" class="mic-btn-inactive" title="Bắt đầu ra lệnh bằng giọng nói">
+            <i class="fa-solid fa-microphone"></i>
+          </button>
+        </div>
+        <span id="current-date"
+          ><i class="fa-regular fa-calendar"></i> --/--/----</span
+        >
+        <span id="current-time"
+          ><i class="fa-regular fa-clock"></i> --:--:--</span
+        >
+        <div class="user-profile">
+          <i class="fa-regular fa-circle-user"></i>
+          <span>Admin User</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="dashboard-container">
+      <!-- Warning Banner for Security & Overload Alerts -->
+      <div id="alert-banner" class="alert-banner" style="display: none;">
+        <div class="alert-banner-content">
+          <i class="fa-solid fa-triangle-exclamation warning-icon"></i>
+          <div>
+            <h4 id="alert-title">CẢNH BÁO: Phát hiện đột nhập!</h4>
+            <p id="alert-desc">Cảm biến chuyển động phát hiện có người đột nhập trong chế độ vắng nhà.</p>
+          </div>
+        </div>
+        <button id="dismiss-alert-btn" class="btn-dismiss">Tắt báo động</button>
+      </div>
+
+      <section class="metrics-grid">
+        <div class="card metric-card card-blue">
+          <div class="card-info">
+            <span class="card-title">Temperature</span>
+            <h2 class="card-value">
+              <span id="val-temp">--.-</span> <span class="unit">°C</span>
+            </h2>
+          </div>
+          <div id="temp-lottie" style="width: 68px; height: 68px; opacity: 0.8;"></div>
+        </div>
+
+        <div class="card metric-card card-cyan">
+          <div class="card-info">
+            <span class="card-title">Humidity</span>
+            <h2 class="card-value">
+              <span id="val-humid">--.-</span> <span class="unit">%</span>
+            </h2>
+          </div>
+          <div id="humidity-lottie" style="width: 48px; height: 48px; opacity: 0.8;"></div>
+        </div>
+
+        <div class="card metric-card card-yellow">
+          <div class="card-info">
+            <span class="card-title">Voltage</span>
+            <h2 class="card-value">
+              <span id="val-volt">--.-</span> <span class="unit">V</span>
+            </h2>
+          </div>
+          <div id="voltage-lottie" style="width: 48px; height: 48px; opacity: 0.8;"></div>
+        </div>
+
+        <div class="card metric-card card-purple">
+          <div class="card-info">
+            <span class="card-title">Current</span>
+            <h2 class="card-value">
+              <span id="val-curr">--.--</span> <span class="unit">A</span>
+            </h2>
+          </div>
+          <i class="fa-solid fa-wave-square card-icon"></i>
+        </div>
+
+        <div class="card metric-card card-green">
+          <div class="card-info">
+            <span class="card-title">Power</span>
+            <h2 class="card-value">
+              <span id="val-power">--</span> <span class="unit">W</span>
+            </h2>
+          </div>
+          <div id="power-lottie" style="width: 48px; height: 48px; opacity: 0.8;"></div>
+        </div>
+
+        <div class="card metric-card card-teal">
+          <div class="card-info">
+            <span class="card-title">Energy Today</span>
+            <h2 class="card-value">
+              <span id="val-energy">--.--</span> <span class="unit">Wh</span>
+            </h2>
+          </div>
+          <div id="energy-lottie" style="width: 48px; height: 48px; opacity: 0.8;"></div>
+        </div>
+
+        <div class="card metric-card card-gold">
+          <div class="card-info">
+            <span class="card-title">Est. Cost Today</span>
+            <h2 class="card-value">
+              <span id="val-cost">--,---</span> <span class="unit">VND</span>
+            </h2>
+          </div>
+          <div id="cost-lottie" style="width: 48px; height: 48px; opacity: 0.8;"></div>
+        </div>
+
+
+        <div class="card metric-card card-weather" id="weather-card">
+          <div class="card-info" style="width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <span class="card-title">Weather (Thu Duc)</span>
+              <button id="weather-speak-btn" title="Đọc báo cáo thời tiết" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; padding: 2px; transition: color 0.2s;"><i class="fa-solid fa-volume-high"></i></button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; margin-top: 5px;">
+              <i id="weather-icon" class="fa-solid fa-cloud-sun" style="font-size: 26px; color: var(--neon-cyan);"></i>
+              <div>
+                <h2 class="card-value" style="font-size: 18px; line-height: 1.1;"><span id="weather-temp">--.-</span><span class="unit">°C</span></h2>
+                <span id="weather-desc" style="font-size: 11px; color: var(--text-secondary); display: block;">Đang tải...</span>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 6px;">
+              <span><i class="fa-solid fa-droplet" style="margin-right: 2px;"></i> Độ ẩm: <b id="weather-humidity">--</b>%</span>
+              <span><i class="fa-solid fa-wind" style="margin-right: 2px;"></i> Gió: <b id="weather-wind">--.-</b> km/h</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="middle-grid">
+        <div class="card control-box">
+          <h3>Device Control</h3>
+          <hr class="divider" />
+
+          <div class="control-item">
+            <div class="control-left" style="flex: 1; margin-right: 15px;">
+              <div class="icon-wrapper" id="fan-wrapper">
+                <div id="fan-lottie" class="img-device"></div>
+              </div>
+              <div style="flex: 1; min-width: 150px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <h4>Fan Control</h4>
+                  <span class="status-badge on" id="fan-badge">ON</span>
+                </div>
+                <div class="device-stats-grid">
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Volt</span>
+                    <span class="device-stat-value"><span id="fan-volt">--.-</span><span class="unit">V</span></span>
+                  </div>
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Ampe</span>
+                    <span class="device-stat-value"><span id="fan-curr">--.--</span><span class="unit">A</span></span>
+                  </div>
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Power</span>
+                    <span class="device-stat-value"><span id="fan-pwr">--</span><span class="unit">W</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mode-selector" id="fan-modes">
+              <button class="btn-mode" data-device="fan" data-mode="OFF">OFF</button>
+              <button class="btn-mode active" data-device="fan" data-mode="AUTO">AUTO</button>
+              <button class="btn-mode" data-device="fan" data-mode="ON">ON</button>
+            </div>
+          </div>
+
+          <div class="control-item">
+            <div class="control-left" style="flex: 1; margin-right: 15px;">
+              <div class="icon-wrapper" id="light-wrapper">
+                <div id="light-lottie" class="img-device"></div>
+              </div>
+              <div style="flex: 1; min-width: 150px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <h4>Light Control</h4>
+                  <span class="status-badge on" id="light-badge">ON</span>
+                </div>
+                <div class="device-stats-grid">
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Volt</span>
+                    <span class="device-stat-value"><span id="light-volt">--.-</span><span class="unit">V</span></span>
+                  </div>
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Ampe</span>
+                    <span class="device-stat-value"><span id="light-curr">--.--</span><span class="unit">A</span></span>
+                  </div>
+                  <div class="device-stat-item">
+                    <span class="device-stat-label">Power</span>
+                    <span class="device-stat-value"><span id="light-pwr">--</span><span class="unit">W</span></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mode-selector" id="light-modes">
+              <button class="btn-mode" data-device="light" data-mode="OFF">OFF</button>
+              <button class="btn-mode active" data-device="light" data-mode="AUTO">AUTO</button>
+              <button class="btn-mode" data-device="light" data-mode="ON">ON</button>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="card graph-box">
+          <div class="graph-header">
+            <h3>Energy Consumption</h3>
+            <div class="time-filter">
+              <button class="btn-time active" data-filter="hourly">Hourly</button>
+              <button class="btn-time" data-filter="daily">Daily</button>
+              <button class="btn-time" data-filter="monthly">Monthly</button>
+              <button class="btn-time" data-filter="yearly">Yearly</button>
+            </div>
+          </div>
+          <div class="chart-container">
+            <canvas id="energyChart"></canvas>
+          </div>
+        </div>
+
+        <div class="card summary-box">
+          <h3>Energy Summary</h3>
+          <hr class="divider" />
+          <ul class="summary-list">
+            <li>
+              <span>Today</span>
+              <span class="value-highlight text-green"
+                ><b id="sum-today">--.-</b> Wh
+                <i class="fa-solid fa-caret-up"></i
+              ></span>
+            </li>
+            <li>
+              <span>This Week</span>
+              <span class="value-highlight text-green"
+                ><b id="sum-week">28,560</b> Wh
+                <i class="fa-solid fa-caret-up"></i
+              ></span>
+            </li>
+            <li>
+              <span>This Month</span>
+              <span class="value-highlight text-green"
+                ><b id="sum-month">128,430</b> Wh
+                <i class="fa-solid fa-caret-up"></i
+              ></span>
+            </li>
+            <li>
+              <span>Peak Power</span>
+              <span class="value-highlight text-orange"
+                ><b id="sum-peak">1.25</b> kW <i class="fa-solid fa-xmark"></i
+              ></span>
+            </li>
+            <li>
+              <span>Est. Monthly Bill</span>
+              <span class="value-highlight text-blue"
+                ><b id="sum-bill">205,200</b> VND</span
+              >
+            </li>
+          </ul>
+
+          <div class="price-config-container" style="margin-top: 20px; padding: 12px; background: var(--bg-control-item); border-radius: 8px; border: 1px solid var(--border-color);">
+            <label for="price-per-wh" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 6px; font-weight: 500;">Đơn giá điện (VND/Wh):</label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <input type="number" id="price-per-wh" value="3000" min="0" step="100" style="flex: 1; min-width: 60px; background: var(--bg-main); border: 1px solid var(--border-color); color: var(--text-primary); padding: 6px 10px; border-radius: 6px; font-size: 13px; outline: none;" />
+              <button id="btn-save-price" style="background: var(--neon-blue); border: none; color: white; padding: 6px 12px; font-size: 12px; font-weight: bold; border-radius: 6px; cursor: pointer; transition: background 0.2s;">Lưu</button>
+            </div>
+          </div>
+
+          <h3 style="margin-top: 25px">Energy Saving Tips</h3>
+          <hr class="divider" />
+          <div class="tip-item">
+            <i class="fa-regular fa-lightbulb tip-icon yellow-text"></i>
+            <p>
+              Turn off lights when not in use. <br /><span>You can save up to 15%</span>
+            </p>
+          </div>
+          <div class="tip-item">
+            <i class="fa-solid fa-fan tip-icon blue-text"></i>
+            <p>
+              Use fan instead of AC. <br /><span>You can save up to 20%</span>
+            </p>
+          </div>
+          </div>
+        </div>
+
+        <div class="card schedule-box">
+          <div class="schedule-header">
+            <h3>Weekly Schedules</h3>
+          </div>
+          <hr class="divider" />
+          <div class="schedule-content-layout">
+            <div class="schedule-left-pane">
+              <form id="schedule-form" class="schedule-form">
+                <div class="schedule-inputs-row">
+                  <div class="input-group">
+                    <label for="sched-device">Thiết bị</label>
+                    <select id="sched-device" class="sched-select" required>
+                      <option value="fan">Quạt (Fan)</option>
+                      <option value="light">Đèn (Light)</option>
+                    </select>
+                  </div>
+                  <div class="input-group">
+                    <label for="sched-time-start">Thời gian BẬT</label>
+                    <input type="time" id="sched-time-start" class="sched-time" required />
+                  </div>
+                  <div class="input-group">
+                    <label for="sched-time-end">Thời gian TẮT</label>
+                    <input type="time" id="sched-time-end" class="sched-time" required />
+                  </div>
+                </div>
+                
+                <div class="days-container">
+                  <div class="days-header-row">
+                    <span class="days-label">Chọn các ngày hoạt động:</span>
+                    <button type="button" id="btn-toggle-all-days" class="btn-all-days">Tất cả các ngày</button>
+                  </div>
+                  <div class="schedule-days-grid">
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="2"><span>T2</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="3"><span>T3</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="4"><span>T4</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="5"><span>T5</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="6"><span>T6</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="7"><span>T7</span></label>
+                    <label class="day-checkbox-label"><input type="checkbox" name="sched-day" value="8"><span>CN</span></label>
+                  </div>
+                </div>
+                
+                <button type="submit" class="btn-add-schedule"><i class="fa-solid fa-plus"></i> Thêm lịch hẹn</button>
+              </form>
+            </div>
+            
+            <div class="schedule-right-pane">
+              <div class="device-schedule-board">
+                <div class="board-header">
+                  <i class="fa-solid fa-fan blue-text"></i>
+                  <h4>Lịch trình hoạt động Quạt</h4>
+                </div>
+                <div class="weekly-columns-container" id="fan-weekly-columns">
+                  <!-- Days columns T2 to CN will be rendered here -->
+                </div>
+              </div>
+              
+              <div class="device-schedule-board">
+                <div class="board-header">
+                  <i class="fa-regular fa-lightbulb yellow-text"></i>
+                  <h4>Lịch trình hoạt động Đèn</h4>
+                </div>
+                <div class="weekly-columns-container" id="light-weekly-columns">
+                  <!-- Days columns T2 to CN will be rendered here -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card table-section">
+        <div class="table-header">
+          <h3>Historical Data</h3>
+          <div class="table-actions">
+            <input type="text" placeholder="Search..." class="search-bar" />
+            <button class="btn-action">
+              <i class="fa-regular fa-calendar-days"></i>
+            </button>
+            <button class="btn-action">
+              <i class="fa-solid fa-sliders"></i> Filter
+            </button>
+            <button class="btn-action" id="btn-export-csv" title="Xuất dữ liệu ra file CSV">
+              <i class="fa-solid fa-file-export"></i> Export CSV
+            </button>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table id="history-table">
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Temperature (°C)</th>
+                <th>Humidity (%)</th>
+                <th>Fan Status</th>
+                <th>Light Status</th>
+                <th>Fan Power (W)</th>
+                <th>Light Power (W)</th>
+                <th>Total Power (W)</th>
+                <th>Energy (Wh)</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
