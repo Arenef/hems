@@ -1,6 +1,7 @@
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -12,7 +13,7 @@ const char* ssid = "IphoneS";         // Thay bằng tên Wi-Fi của bạn
 const char* password = "99999999"; // Thay bằng mật khẩu Wi-Fi của bạn
 
 // URL endpoint backend của bạn (thay <SERVER_IP> bằng IP máy tính chạy backend, ví dụ: 192.168.1.5)
-const char* serverUrl = "http://172.20.10.3:3000/api/sensor"; 
+const char* serverUrl = "https://hems-e7p9.onrender.com/api/sensor"; 
 
 // ================= CÀI ĐẶT CHÂN CẢM BIẾN & THIẾT BỊ =================
 #define DHTPIN 4       // Chân Data của DHT11 nối GPIO 4
@@ -303,10 +304,13 @@ if (WiFi.status() == WL_CONNECTED) {
 
 // ================= HÀM GỬI DỮ LIỆU LÊN SERVER =================
 void sendSensorData() {
+  WiFiClientSecure client;
+  client.setInsecure();
+
   HTTPClient http;
   
   // Khởi tạo kết nối HTTP đến server
-  http.begin(serverUrl);
+  http.begin(client, serverUrl);
   http.addHeader("Content-Type", "application/json");
 
   // Tạo JSON payload bằng thư viện ArduinoJson

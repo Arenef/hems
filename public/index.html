@@ -23,6 +23,14 @@
         <button id="theme-toggle-btn" class="theme-btn" title="Chuyển đổi giao diện Sáng/Tối">
           <i class="fa-solid fa-moon"></i>
         </button>
+        <!-- Clap Control Toggle -->
+        <div class="clap-control-container" style="display: flex; align-items: center; gap: 8px; background: var(--bg-control-item); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border-color); transition: all 0.3s ease;">
+          <span style="font-size: 13px; color: var(--text-secondary); display: flex; align-items: center; gap: 5px;"><i class="fa-solid fa-hands-clapping"></i> Vỗ tay tắt đèn</span>
+          <label class="switch">
+            <input type="checkbox" id="clap-toggle-chk">
+            <span class="slider"></span>
+          </label>
+        </div>
         <!-- Voice Command Controls -->
         <div class="voice-control-container">
           <span id="voice-status-text">Ra lệnh bằng giọng nói</span>

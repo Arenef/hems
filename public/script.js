@@ -939,15 +939,17 @@ if (speakBtn) {
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let isVoiceListening = false;
+let commandExecuted = false; // Flag kiểm soát thực hiện lệnh 1 lần duy nhất trong lượt nói
 
 if (SpeechRecognition) {
     recognition = new SpeechRecognition();
     recognition.lang = 'vi-VN';
     recognition.continuous = false;
-    recognition.interimResults = false;
+    recognition.interimResults = true; // Kích hoạt nhận diện kết quả tạm thời (giúp nhạy hơn)
 
     recognition.onstart = () => {
         isVoiceListening = true;
+        commandExecuted = false; // Reset flag khi bắt đầu nghe
         const micBtn = document.getElementById('voice-mic-btn');
         const container = document.querySelector('.voice-control-container');
 
@@ -965,14 +967,48 @@ if (SpeechRecognition) {
     };
 
     recognition.onresult = async (event) => {
-        const result = event.results[0][0].transcript.toLowerCase().trim();
-        console.log("Kết quả nhận giọng nói:", result);
+        if (commandExecuted) return;
 
-        const statusText = document.getElementById('voice-status-text');
-        if (statusText) statusText.innerText = `Lệnh: "${result}"`;
+        let result = "";
+        let isFinal = false;
 
-        // Thực thi lệnh thoại
-        await executeVoiceCommand(result);
+        // Tổng hợp kết quả từ đầu vào giọng nói
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            result += event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                isFinal = true;
+            }
+        }
+
+        result = result.toLowerCase().trim();
+        console.log("Kết quả nhận giọng nói tạm thời:", result);
+
+        // Khớp lệnh cực nhạy bằng cách so khớp từ khóa ngay khi người dùng đang nói
+        if (
+            result.includes('bật đèn') || 
+            result.includes('tắt đèn') || 
+            result.includes('bật quạt') || 
+            result.includes('tắt quạt') || 
+            result.includes('đèn tự động') || 
+            result.includes('quạt tự động') || 
+            result.includes('giao diện sáng') || 
+            result.includes('giao diện tối') || 
+            result.includes('thời tiết') || 
+            result.includes('báo cáo thời tiết')
+        ) {
+            commandExecuted = true;
+            const statusText = document.getElementById('voice-status-text');
+            if (statusText) statusText.innerText = `Lệnh: "${result}"`;
+            
+            await executeVoiceCommand(result);
+            recognition.stop(); // Tự động dừng ghi âm sau khi nhận được lệnh đúng
+        } else if (isFinal) {
+            // Nếu người dùng đã nói xong (kết quả cuối cùng) mà vẫn không khớp lệnh nhanh nào ở trên
+            commandExecuted = true;
+            const statusText = document.getElementById('voice-status-text');
+            if (statusText) statusText.innerText = `Lệnh: "${result}"`;
+            await executeVoiceCommand(result);
+        }
     };
 } else {
     console.warn("Trình duyệt này không hỗ trợ SpeechRecognition.");
@@ -1351,4 +1387,123 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // --- KHỞI TẠO TÍNH NĂNG VỖ TAY TẮT ĐÈN ---
+    const clapToggleChk = document.getElementById('clap-toggle-chk');
+    if (clapToggleChk) {
+        // Tải trạng thái đã lưu trước đó từ localStorage
+        const savedClapState = localStorage.getItem('clap-control-enabled') === 'true';
+        clapToggleChk.checked = savedClapState;
+        if (savedClapState) {
+            startClapDetection();
+        }
+
+        clapToggleChk.addEventListener('change', function () {
+            localStorage.setItem('clap-control-enabled', this.checked);
+            if (this.checked) {
+                startClapDetection();
+            } else {
+                stopClapDetection();
+            }
+        });
+    }
 });
+
+/* ========================================================
+   CLAP DETECTION MODULE (VỖ TAY TẮT ĐÈN)
+   ======================================================= */
+let clapAudioContext = null;
+let clapStream = null;
+let clapAnalyser = null;
+let isClapDetectionActive = false;
+let lastClapTime = 0;
+const CLAP_COOLDOWN = 1200;  // Khoảng cách tối thiểu giữa các lần phát hiện vỗ tay (1.2 giây)
+const CLAP_THRESHOLD = 0.22; // Ngưỡng biên độ âm thanh tiếng vỗ tay (0.0 -> 1.0)
+
+async function startClapDetection() {
+    try {
+        clapStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        clapAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = clapAudioContext.createMediaStreamSource(clapStream);
+        clapAnalyser = clapAudioContext.createAnalyser();
+        clapAnalyser.fftSize = 512;
+        source.connect(clapAnalyser);
+
+        const bufferLength = clapAnalyser.fftSize;
+        const dataArray = new Float32Array(bufferLength);
+
+        isClapDetectionActive = true;
+        detectClaps(dataArray);
+        console.log("Đã khởi chạy module nhận diện tiếng vỗ tay.");
+    } catch (err) {
+        console.error("Không thể khởi động micro cho tính năng vỗ tay:", err);
+        const clapToggleChk = document.getElementById('clap-toggle-chk');
+        if (clapToggleChk) clapToggleChk.checked = false;
+        isClapDetectionActive = false;
+        localStorage.setItem('clap-control-enabled', 'false');
+    }
+}
+
+function stopClapDetection() {
+    isClapDetectionActive = false;
+    if (clapStream) {
+        clapStream.getTracks().forEach(track => track.stop());
+    }
+    if (clapAudioContext && clapAudioContext.state !== 'closed') {
+        clapAudioContext.close();
+    }
+    console.log("Đã dừng module nhận diện tiếng vỗ tay.");
+}
+
+function detectClaps(dataArray) {
+    if (!isClapDetectionActive) return;
+
+    requestAnimationFrame(() => detectClaps(dataArray));
+
+    clapAnalyser.getFloatTimeDomainData(dataArray);
+
+    // Tính toán biên độ âm thanh lớn nhất (Peak Amplitude)
+    let maxAmplitude = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+        const val = Math.abs(dataArray[i]);
+        if (val > maxAmplitude) {
+            maxAmplitude = val;
+        }
+    }
+
+    const now = Date.now();
+    // Tiếng vỗ tay tạo ra một xung biên độ âm thanh đột biến lớn
+    if (maxAmplitude > CLAP_THRESHOLD && (now - lastClapTime > CLAP_COOLDOWN)) {
+        lastClapTime = now;
+        console.log(`[Clap Detected] Biên độ xung: ${maxAmplitude.toFixed(3)}`);
+        
+        // Hiệu ứng nháy vàng trên giao diện để phản hồi trực quan
+        triggerClapFeedback();
+        
+        // Thực thi hành động tắt đèn
+        turnOffLightsByClap();
+    }
+}
+
+function triggerClapFeedback() {
+    const clapContainer = document.querySelector('.clap-control-container');
+    if (clapContainer) {
+        // Nháy viền và đổ bóng vàng theo hiệu ứng vỗ tay
+        clapContainer.style.boxShadow = "0 0 15px var(--neon-yellow)";
+        clapContainer.style.borderColor = "var(--neon-yellow)";
+        setTimeout(() => {
+            clapContainer.style.boxShadow = "none";
+            clapContainer.style.borderColor = "var(--border-color)";
+        }, 400);
+    }
+}
+
+async function turnOffLightsByClap() {
+    try {
+        await toggleDeviceVoice('light', 'OFF');
+        speakVietnamese("Đã phát hiện tiếng vỗ tay. Thực hiện tắt toàn bộ đèn.");
+    } catch (e) {
+        console.error("Lỗi khi tắt đèn bằng vỗ tay:", e);
+    }
+}
