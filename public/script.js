@@ -151,6 +151,10 @@ let currentPirState = 0;
 let currentFanStatus = "AUTO";
 let currentLightStatus = "AUTO";
 let pricePerWh = parseInt(localStorage.getItem('price-per-wh')) || 3000;
+let currentFanPower = 0.0;
+let currentLightPower = 0.0;
+let currentFanVoltage = 0.0;
+let currentFanCurrent = 0.0;
 
 // --- LOTTIE ANIMATIONS INITIALIZATION ---
 let fanLottie = lottie.loadAnimation({
@@ -490,14 +494,27 @@ function updateUI(current) {
     }
 
     // Cập nhật thông số điện năng chi tiết cho thiết bị
+    if (current.fanPower !== undefined && current.fanPower !== null) {
+        currentFanPower = parseFloat(current.fanPower);
+    }
+    if (current.lightPower !== undefined && current.lightPower !== null) {
+        currentLightPower = parseFloat(current.lightPower);
+    }
+    if (current.fanVoltage !== undefined && current.fanVoltage !== null) {
+        currentFanVoltage = parseFloat(current.fanVoltage);
+    }
+    if (current.fanCurrent !== undefined && current.fanCurrent !== null) {
+        currentFanCurrent = parseFloat(current.fanCurrent);
+    }
+
     const currentVoltage = parseFloat(document.getElementById('val-volt').innerText) || 0;
     const currentCurrent = parseFloat(document.getElementById('val-curr').innerText) || 0;
     const currentPower = parseFloat(document.getElementById('val-power').innerText) || 0;
-    updateDeviceStats(currentVoltage, currentCurrent, currentPower, current.fanPower, current.lightPower);
+    updateDeviceStats(currentVoltage, currentCurrent, currentPower, currentFanPower, currentLightPower, currentFanVoltage, currentFanCurrent);
 }
 
 // Hàm phân bổ và hiển thị thông số điện năng cho quạt và đèn
-function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPower) {
+function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPower, realFanVoltage, realFanCurrent) {
     const isFanActive = currentFanStatus === "ON" || (currentFanStatus === "AUTO" && currentTemperature > currentTempThreshold);
     const isLightActive = currentLightStatus === "ON" || (currentLightStatus === "AUTO" && currentPirState === 1);
 
@@ -512,7 +529,12 @@ function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPo
     // Xác định điện áp đầu vào. Nếu voltage > 10 (đang lưu trị số 220V cũ trong DB), ta coi như nguồn cấp là 5.0V để hiển thị dải 5V DC đúng yêu cầu
     const inputVoltage = (voltage > 10 || voltage <= 0) ? 5.0 : voltage;
 
-    if (isFanActive) {
+    const hasRealFanVoltage = realFanVoltage !== undefined && realFanVoltage !== null && realFanVoltage > 0;
+    const hasRealFanCurrent = realFanCurrent !== undefined && realFanCurrent !== null && realFanCurrent > 0;
+
+    if (hasRealFanVoltage) {
+        fanVolt = realFanVoltage;
+    } else if (isFanActive) {
         // Áp cho quạt: 4.8 - 5.0 V
         const drop = 0.05 + (Math.random() * 0.1); // sụt áp ngẫu nhiên từ 0.05V - 0.15V
         fanVolt = Math.min(5.0, Math.max(4.8, inputVoltage - drop));
@@ -530,7 +552,11 @@ function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPo
 
     if (hasRealFanPower) {
         fanPwr = realFanPower;
-        fanCurr = fanVolt > 0 ? Number((fanPwr / fanVolt).toFixed(2)) : 0;
+        if (hasRealFanCurrent) {
+            fanCurr = realFanCurrent;
+        } else {
+            fanCurr = fanVolt > 0 ? Number((fanPwr / fanVolt).toFixed(2)) : 0;
+        }
     }
     if (hasRealLightPower) {
         lightPwr = realLightPower;

@@ -56,6 +56,10 @@ const supabase = createClient(
 let lightState = "AUTO"; // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let fanState = "AUTO";   // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let tempThreshold = 30.0; // Ngưỡng nhiệt độ bật quạt tự động
+let latestFanVoltage = 0.0;
+let latestFanCurrent = 0.0;
+let latestFanPower = 0.0;
+let latestLightPower = 0.0;
 
 /* ==========================
    SCHEDULES LOGIC
@@ -148,8 +152,13 @@ wss.on('connection', async (ws) => {
         if (latestError) throw latestError;
         if (historyError) throw historyError;
 
-        const currentSensor = latestData && latestData.length > 0 ? latestData[0] : {};
+                const currentSensor = latestData && latestData.length > 0 ? latestData[0] : {};
         const weather = await getWeatherData();
+
+        const initFanPower = currentSensor.fan_power || 0.0;
+        const initVoltage = currentSensor.voltage || 5.0;
+        const initFanVoltage = initFanPower > 0 ? (latestFanVoltage || initVoltage) : 0.0;
+        const initFanCurrent = initFanPower > 0 ? (latestFanCurrent || Number((initFanPower / initFanVoltage).toFixed(4))) : 0.0;
 
         // Chuẩn bị payload INIT_DATA gửi cho Client
         const initPayload = {
@@ -165,8 +174,10 @@ wss.on('connection', async (ws) => {
                 fanStatus: fanState,
                 lightStatus: lightState,
                 pir: currentSensor.pir || 0,
-                fanPower: currentSensor.fan_power || 0,
-                lightPower: currentSensor.light_power || 0
+                fanPower: initFanPower,
+                lightPower: currentSensor.light_power || 0,
+                fanVoltage: Number(initFanVoltage.toFixed(2)),
+                fanCurrent: Number(initFanCurrent.toFixed(4))
             },
             config: {
                 tempThreshold: tempThreshold
@@ -257,7 +268,9 @@ function broadcastFullUpdate(currentSensor, historyData) {
             lightStatus: lightState,
             pir: currentSensor.pir,
             fanPower: currentSensor.fan_power,
-            lightPower: currentSensor.light_power
+            lightPower: currentSensor.light_power,
+            fanVoltage: currentSensor.fan_voltage,
+            fanCurrent: currentSensor.fan_current
         },
         config: {
             tempThreshold: tempThreshold
@@ -337,6 +350,14 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
         if (light_pwr === null) {
             light_pwr = isLightActive ? Number((0.6 + (Math.random() * 0.02 - 0.01)).toFixed(2)) : 0.0;
         }
+
+        let fan_volt = fan_volt_raw !== null ? Number(fan_volt_raw.toFixed(2)) : (isFanActive ? Number((4.9 + (Math.random() * 0.1 - 0.05)).toFixed(2)) : 0.0);
+        let fan_curr = fan_curr_raw !== null ? Number((fan_curr_raw / 1000.0).toFixed(4)) : (isFanActive && fan_volt > 0 ? Number((fan_pwr / fan_volt).toFixed(4)) : 0.0);
+
+        latestFanVoltage = fan_volt;
+        latestFanCurrent = fan_curr;
+        latestFanPower = fan_pwr;
+        latestLightPower = light_pwr;
 
         // Tự động gán/đồng bộ điện áp chính từ cảm biến INA219 của quạt
         if (volt === null && fan_volt_raw !== null) {
@@ -422,7 +443,11 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             energy: nrg,
             temperature: parsedTemp,
             humidity: parsedHumi,
-            pir: parsedPir
+            pir: parsedPir,
+            fan_power: fan_pwr,
+            light_power: light_pwr,
+            fan_voltage: fan_volt,
+            fan_current: fan_curr
         };
         broadcastFullUpdate(currentSensor, historyData || []);
 
