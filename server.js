@@ -59,6 +59,8 @@ let tempThreshold = 30.0; // Ngưỡng nhiệt độ bật quạt tự động
 let latestFanVoltage = 0.0;
 let latestFanCurrent = 0.0;
 let latestFanPower = 0.0;
+let latestLightVoltage = 0.0;
+let latestLightCurrent = 0.0;
 let latestLightPower = 0.0;
 
 /* ==========================
@@ -155,10 +157,14 @@ wss.on('connection', async (ws) => {
                 const currentSensor = latestData && latestData.length > 0 ? latestData[0] : {};
         const weather = await getWeatherData();
 
-        const initFanPower = currentSensor.fan_power || 0.0;
+                const initFanPower = currentSensor.fan_power || 0.0;
         const initVoltage = currentSensor.voltage || 5.0;
         const initFanVoltage = initFanPower > 0 ? (latestFanVoltage || initVoltage) : 0.0;
         const initFanCurrent = initFanPower > 0 ? (latestFanCurrent || Number((initFanPower / initFanVoltage).toFixed(4))) : 0.0;
+
+        const initLightPower = currentSensor.light_power || 0.0;
+        const initLightVoltage = initLightPower > 0 ? (latestLightVoltage || 3.65) : 0.0;
+        const initLightCurrent = initLightPower > 0 ? (latestLightCurrent || Number((initLightPower / initLightVoltage).toFixed(4))) : 0.0;
 
         // Chuẩn bị payload INIT_DATA gửi cho Client
         const initPayload = {
@@ -175,9 +181,11 @@ wss.on('connection', async (ws) => {
                 lightStatus: lightState,
                 pir: currentSensor.pir || 0,
                 fanPower: initFanPower,
-                lightPower: currentSensor.light_power || 0,
+                lightPower: initLightPower,
                 fanVoltage: Number(initFanVoltage.toFixed(2)),
-                fanCurrent: Number(initFanCurrent.toFixed(4))
+                fanCurrent: Number(initFanCurrent.toFixed(4)),
+                lightVoltage: Number(initLightVoltage.toFixed(2)),
+                lightCurrent: Number(initLightCurrent.toFixed(4))
             },
             config: {
                 tempThreshold: tempThreshold
@@ -270,7 +278,9 @@ function broadcastFullUpdate(currentSensor, historyData) {
             fanPower: currentSensor.fan_power,
             lightPower: currentSensor.light_power,
             fanVoltage: currentSensor.fan_voltage,
-            fanCurrent: currentSensor.fan_current
+            fanCurrent: currentSensor.fan_current,
+            lightVoltage: currentSensor.light_voltage,
+            lightCurrent: currentSensor.light_current
         },
         config: {
             tempThreshold: tempThreshold
@@ -348,15 +358,20 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             fan_pwr = isFanActive ? Number((1.2 + (Math.random() * 0.04 - 0.02)).toFixed(2)) : 0.0;
         }
         if (light_pwr === null) {
-            light_pwr = isLightActive ? Number((0.6 + (Math.random() * 0.02 - 0.01)).toFixed(2)) : 0.0;
+            light_pwr = isLightActive ? Number((1.2 + Math.random() * 0.2).toFixed(2)) : 0.0;
         }
 
         let fan_volt = fan_volt_raw !== null ? Number(fan_volt_raw.toFixed(2)) : (isFanActive ? Number((4.9 + (Math.random() * 0.1 - 0.05)).toFixed(2)) : 0.0);
         let fan_curr = fan_curr_raw !== null ? Number((fan_curr_raw / 1000.0).toFixed(4)) : (isFanActive && fan_volt > 0 ? Number((fan_pwr / fan_volt).toFixed(4)) : 0.0);
 
+        let light_volt = isLightActive ? Number((3.6 + Math.random() * 0.1).toFixed(2)) : 0.0;
+        let light_curr = isLightActive ? Number((0.375 + Math.random() * 0.125).toFixed(4)) : 0.0;
+
         latestFanVoltage = fan_volt;
         latestFanCurrent = fan_curr;
         latestFanPower = fan_pwr;
+        latestLightVoltage = light_volt;
+        latestLightCurrent = light_curr;
         latestLightPower = light_pwr;
 
         // Tự động gán/đồng bộ điện áp chính từ cảm biến INA219 của quạt
@@ -447,7 +462,9 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             fan_power: fan_pwr,
             light_power: light_pwr,
             fan_voltage: fan_volt,
-            fan_current: fan_curr
+            fan_current: fan_curr,
+            light_voltage: light_volt,
+            light_current: light_curr
         };
         broadcastFullUpdate(currentSensor, historyData || []);
 

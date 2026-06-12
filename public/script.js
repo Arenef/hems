@@ -155,6 +155,8 @@ let currentFanPower = 0.0;
 let currentLightPower = 0.0;
 let currentFanVoltage = 0.0;
 let currentFanCurrent = 0.0;
+let currentLightVoltage = 0.0;
+let currentLightCurrent = 0.0;
 
 // --- LOTTIE ANIMATIONS INITIALIZATION ---
 let fanLottie = lottie.loadAnimation({
@@ -506,15 +508,21 @@ function updateUI(current) {
     if (current.fanCurrent !== undefined && current.fanCurrent !== null) {
         currentFanCurrent = parseFloat(current.fanCurrent);
     }
+    if (current.lightVoltage !== undefined && current.lightVoltage !== null) {
+        currentLightVoltage = parseFloat(current.lightVoltage);
+    }
+    if (current.lightCurrent !== undefined && current.lightCurrent !== null) {
+        currentLightCurrent = parseFloat(current.lightCurrent);
+    }
 
     const currentVoltage = parseFloat(document.getElementById('val-volt').innerText) || 0;
     const currentCurrent = parseFloat(document.getElementById('val-curr').innerText) || 0;
     const currentPower = parseFloat(document.getElementById('val-power').innerText) || 0;
-    updateDeviceStats(currentVoltage, currentCurrent, currentPower, currentFanPower, currentLightPower, currentFanVoltage, currentFanCurrent);
+    updateDeviceStats(currentVoltage, currentCurrent, currentPower, currentFanPower, currentLightPower, currentFanVoltage, currentFanCurrent, currentLightVoltage, currentLightCurrent);
 }
 
 // Hàm phân bổ và hiển thị thông số điện năng cho quạt và đèn
-function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPower, realFanVoltage, realFanCurrent) {
+function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPower, realFanVoltage, realFanCurrent, realLightVoltage, realLightCurrent) {
     const isFanActive = currentFanStatus === "ON" || (currentFanStatus === "AUTO" && currentTemperature > currentTempThreshold);
     const isLightActive = currentLightStatus === "ON" || (currentLightStatus === "AUTO" && currentPirState === 1);
 
@@ -540,7 +548,12 @@ function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPo
         fanVolt = Math.min(5.0, Math.max(4.8, inputVoltage - drop));
     }
 
-    if (isLightActive) {
+    const hasRealLightVoltage = realLightVoltage !== undefined && realLightVoltage !== null && realLightVoltage > 0;
+    const hasRealLightCurrent = realLightCurrent !== undefined && realLightCurrent !== null && realLightCurrent > 0;
+
+    if (hasRealLightVoltage) {
+        lightVolt = realLightVoltage;
+    } else if (isLightActive) {
         // Áp cho đèn: 4.7 - 4.8 V
         const drop = 0.15 + (Math.random() * 0.1); // sụt áp ngẫu nhiên từ 0.15V - 0.25V
         lightVolt = Math.min(4.8, Math.max(4.7, inputVoltage - drop));
@@ -560,7 +573,11 @@ function updateDeviceStats(voltage, currentVal, power, realFanPower, realLightPo
     }
     if (hasRealLightPower) {
         lightPwr = realLightPower;
-        lightCurr = lightVolt > 0 ? Number((lightPwr / lightVolt).toFixed(2)) : 0;
+        if (hasRealLightCurrent) {
+            lightCurr = realLightCurrent;
+        } else {
+            lightCurr = lightVolt > 0 ? Number((lightPwr / lightVolt).toFixed(2)) : 0;
+        }
     }
 
     // Nếu thiếu công suất thực đo, tự động phân bổ theo tỉ lệ thiết kế
