@@ -352,13 +352,13 @@ function dismissAlert() {
                 'Content-Type': 'application/json'
             }
         })
-        .then(res => res.json())
-        .then(data => {
-            console.log('🔕 [LIMIT] Phản hồi từ server khi tắt cảnh báo:', data);
-        })
-        .catch(err => {
-            console.error('❌ Lỗi gửi yêu cầu tắt cảnh báo đến server:', err);
-        });
+            .then(res => res.json())
+            .then(data => {
+                console.log('🔕 [LIMIT] Phản hồi từ server khi tắt cảnh báo:', data);
+            })
+            .catch(err => {
+                console.error('❌ Lỗi gửi yêu cầu tắt cảnh báo đến server:', err);
+            });
     }
 }
 
@@ -407,6 +407,15 @@ function updateConfigUI(config) {
         // Chỉ tự động cập nhật nếu người dùng không đang gõ (focus) trong ô nhập liệu
         if (limitEl && document.activeElement !== limitEl) {
             limitEl.value = dailyEnergyLimit;
+        }
+    }
+
+    if (config.pricePerWh !== undefined) {
+        pricePerWh = parseInt(config.pricePerWh);
+        localStorage.setItem('price-per-wh', pricePerWh);
+        const priceInput = document.getElementById('price-per-wh');
+        if (priceInput && document.activeElement !== priceInput) {
+            priceInput.value = pricePerWh;
         }
     }
 }
@@ -497,7 +506,7 @@ function updateUI(current) {
         // Tính chi phí dựa trên Wh và đơn giá người dùng cấu hình
         const calculatedCost = Math.round(energyWh * pricePerWh);
         document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
-        
+
         updateMonthlyBillEstimate();
 
         if (current.energyLimitExceeded) {
@@ -524,7 +533,7 @@ function updateUI(current) {
         latestEnergyMonthWh = energyMonthWh;
         const monthEl = document.getElementById('sum-month');
         if (monthEl) monthEl.innerText = energyMonthWh.toLocaleString('vi-VN');
-        
+
         updateMonthlyBillEstimate();
     }
 
@@ -1551,8 +1560,8 @@ async function fetchAndRenderMonthlyReport(force = false) {
                 const parts = row.month.split('-');
                 const monthDisplay = parts.length === 2 ? `${parts[1]}/${parts[0]}` : row.month;
 
-                // Tính toán tiền điện ước tính cho tháng này dựa trên đơn giá hiện tại
-                const estCost = Math.round(row.totalEnergy * pricePerWh);
+                // Sử dụng tiền điện tính sẵn từ database
+                const estCost = row.totalCost || 0;
 
                 tr.innerHTML = `
                     <td><b>Tháng ${monthDisplay}</b></td>
@@ -1583,23 +1592,36 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (savePriceBtn && priceInput) {
-        savePriceBtn.addEventListener('click', () => {
+        savePriceBtn.addEventListener('click', async () => {
             const newPrice = parseInt(priceInput.value);
             if (!isNaN(newPrice) && newPrice >= 0) {
-                pricePerWh = newPrice;
-                localStorage.setItem('price-per-wh', newPrice);
-                alert(`Đã cập nhật đơn giá điện: ${newPrice.toLocaleString('vi-VN')} VND/Wh`);
+                try {
+                    const res = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pricePerWh: newPrice })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        pricePerWh = newPrice;
+                        localStorage.setItem('price-per-wh', newPrice);
+                        alert(`Đã cập nhật đơn giá điện trên máy chủ: ${newPrice.toLocaleString('vi-VN')} VND/Wh`);
 
-                // Kích hoạt tính toán lại hóa đơn ngay lập tức dựa trên giá trị năng lượng đang có trên màn hình
-                const currentEnergyEl = document.getElementById('val-energy');
-                if (currentEnergyEl) {
-                    const energyWh = parseFloat(currentEnergyEl.innerText) || 0;
-                    const calculatedCost = Math.round(energyWh * pricePerWh);
-                    document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
-                    
-                    updateMonthlyBillEstimate();
+                        // Kích hoạt tính toán lại hóa đơn ngay lập tức dựa trên giá trị năng lượng đang có trên màn hình
+                        const currentEnergyEl = document.getElementById('val-energy');
+                        if (currentEnergyEl) {
+                            const energyWh = parseFloat(currentEnergyEl.innerText) || 0;
+                            const calculatedCost = Math.round(energyWh * pricePerWh);
+                            document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
+                            
+                            updateMonthlyBillEstimate();
+                        }
+                        fetchAndRenderMonthlyReport(true); // Cập nhật lại hóa đơn tháng theo giá mới ngay lập tức
+                    }
+                } catch (err) {
+                    console.error('Lỗi lưu đơn giá lên máy chủ:', err);
+                    alert("Không thể kết nối đến máy chủ để lưu đơn giá.");
                 }
-                fetchAndRenderMonthlyReport(true); // Cập nhật lại hóa đơn tháng theo giá mới ngay lập tức
             } else {
                 alert("Vui lòng nhập đơn giá hợp lệ!");
             }

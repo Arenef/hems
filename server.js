@@ -62,6 +62,7 @@ let energyLimitDismissedAt = 0; // Timestamp (ms) của lần cuối người d�
 let preAlarmLightState = null;
 let preAlarmFanState = null;
 let latestEnergyTodayWh = 0.0;
+let pricePerWh = 3;   // Đơn giá điện (VND / Wh), mặc định 3đ
 let latestFanVoltage = 0.0;
 let latestFanCurrent = 0.0;
 let latestFanPower = 0.0;
@@ -422,7 +423,7 @@ wss.on('connection', async (ws) => {
                 current: currentSensor.current || 0,
                 power: currentSensor.power || 0,
                 energyToday: energyToday,
-                costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+                costToday: Math.round(energyToday * 1000 * pricePerWh), // Quy đổi tiền điện ảo theo đơn giá
                 energyWeek: energyWeek,
                 energyMonth: energyMonth,
                 peakPower: peakPowerkW,
@@ -439,7 +440,8 @@ wss.on('connection', async (ws) => {
             },
             config: {
                 tempThreshold: tempThreshold,
-                dailyEnergyLimit: dailyEnergyLimit
+                dailyEnergyLimit: dailyEnergyLimit,
+                pricePerWh: pricePerWh
             },
             weather: weather,
             history: (historyData || []).map(row => ({
@@ -502,7 +504,8 @@ function broadcastDeviceState() {
         },
         config: {
             tempThreshold: tempThreshold,
-            dailyEnergyLimit: dailyEnergyLimit
+            dailyEnergyLimit: dailyEnergyLimit,
+            pricePerWh: pricePerWh
         }
     });
 
@@ -582,7 +585,7 @@ async function broadcastFullUpdate(currentSensor, historyData) {
             current: currentSensor.current,
             power: currentSensor.power,
             energyToday: energyToday,
-            costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+            costToday: Math.round(energyToday * 1000 * pricePerWh), // Quy đổi tiền điện ảo theo đơn giá
             energyWeek: energyWeek,
             energyMonth: energyMonth,
             peakPower: peakPowerkW,
@@ -599,7 +602,8 @@ async function broadcastFullUpdate(currentSensor, historyData) {
         },
         config: {
             tempThreshold: tempThreshold,
-            dailyEnergyLimit: dailyEnergyLimit
+            dailyEnergyLimit: dailyEnergyLimit,
+            pricePerWh: pricePerWh
         },
         history: historyData.map(row => ({
             timestamp: row.created_at
@@ -883,7 +887,7 @@ async function updateMonthlyReports(fullSync = false) {
                 .select('created_at, energy, power, fan_power, light_power')
                 .order('id', { ascending: true })
                 .range(from, to);
-            
+
             // Nếu không phải đồng bộ toàn bộ, chỉ lọc lấy dữ liệu của tháng hiện tại để tối ưu hiệu năng
             if (!fullSync) {
                 query = query.gte('created_at', startOfMonth);
@@ -955,6 +959,7 @@ async function updateMonthlyReports(fullSync = false) {
                 total_energy: totalEnergyWh,
                 fan_energy: Number(fanEnergyWh.toFixed(4)),
                 light_energy: Number(lightEnergyWh.toFixed(4)),
+                total_cost: Math.round(totalEnergyWh * pricePerWh),
                 updated_at: new Date().toISOString()
             });
         });
@@ -964,7 +969,7 @@ async function updateMonthlyReports(fullSync = false) {
             const { error } = await supabase
                 .from('monthly_reports')
                 .upsert(report, { onConflict: 'month' });
-            
+
             if (error) {
                 console.error(`❌ [REPORT] Lỗi upsert cho tháng ${report.month}:`, error.message);
             } else if (fullSync) {
@@ -999,7 +1004,8 @@ app.get('/api/monthly-report', async (req, res) => {
             month: row.month,
             totalEnergy: row.total_energy,
             fanEnergy: row.fan_energy,
-            lightEnergy: row.light_energy
+            lightEnergy: row.light_energy,
+            totalCost: row.total_cost !== undefined && row.total_cost !== null ? row.total_cost : Math.round(row.total_energy * pricePerWh)
         }));
 
         res.json({ success: true, data: formattedData });
@@ -1369,7 +1375,8 @@ function broadcastConfig() {
         type: 'UPDATE_CONFIG',
         config: {
             tempThreshold: tempThreshold,
-            dailyEnergyLimit: dailyEnergyLimit
+            dailyEnergyLimit: dailyEnergyLimit,
+            pricePerWh: pricePerWh
         }
     });
     clients.forEach(client => {
@@ -1386,7 +1393,8 @@ app.get('/api/config', (req, res) => {
     res.json({
         success: true,
         tempThreshold: tempThreshold,
-        dailyEnergyLimit: dailyEnergyLimit
+        dailyEnergyLimit: dailyEnergyLimit,
+        pricePerWh: pricePerWh
     });
 });
 
@@ -1399,7 +1407,12 @@ app.post('/api/config', (req, res) => {
         // Kiểm tra ngay lập tức trạng thái cảnh báo vượt giới hạn
         checkEnergyLimitStatus();
     }
-    console.log(`⚙️ Cập nhật cấu hình: Ngưỡng nhiệt độ = ${tempThreshold}°C, Giới hạn điện ngày = ${dailyEnergyLimit} Wh`);
+    if (req.body.pricePerWh !== undefined) {
+        pricePerWh = parseInt(req.body.pricePerWh);
+        // Cập nhật ngay lập tức báo cáo tháng với giá mới
+        updateMonthlyReports(false);
+    }
+    console.log(`⚙️ Cập nhật cấu hình: Ngưỡng nhiệt độ = ${tempThreshold}°C, Giới hạn điện ngày = ${dailyEnergyLimit} Wh, Đơn giá = ${pricePerWh} VND/Wh`);
 
     // Phát cập nhật cấu hình tới tất cả Web clients
     broadcastConfig();
@@ -1411,6 +1424,7 @@ app.post('/api/config', (req, res) => {
         success: true,
         tempThreshold: tempThreshold,
         dailyEnergyLimit: dailyEnergyLimit,
+        pricePerWh: pricePerWh,
         message: message
     });
 });
