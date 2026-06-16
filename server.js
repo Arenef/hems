@@ -861,21 +861,35 @@ app.get('/api/history', async (req, res) => {
 });
 
 // Hàm tổng hợp báo cáo tháng và lưu vào bảng monthly_reports trên Supabase
-async function updateMonthlyReports() {
+// Hỗ trợ tham số fullSync: true để tính toàn bộ lịch sử, false để chỉ tính tháng hiện tại
+async function updateMonthlyReports(fullSync = false) {
     try {
-        console.log("📊 [REPORT] Bắt đầu tổng hợp và cập nhật báo cáo điện năng hằng tháng...");
         let dbData = [];
         let from = 0;
         let to = 999;
         let hasMore = true;
 
-        // Tải toàn bộ dữ liệu từ bảng sensor_data để tổng hợp
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+        if (fullSync) {
+            console.log("📊 [REPORT] Bắt đầu đồng bộ toàn bộ lịch sử báo cáo các tháng...");
+        }
+
+        // Tải dữ liệu từ bảng sensor_data để tổng hợp
         while (hasMore) {
-            const { data, error } = await supabase
+            let query = supabase
                 .from('sensor_data')
                 .select('created_at, energy, power, fan_power, light_power')
                 .order('id', { ascending: true })
                 .range(from, to);
+            
+            // Nếu không phải đồng bộ toàn bộ, chỉ lọc lấy dữ liệu của tháng hiện tại để tối ưu hiệu năng
+            if (!fullSync) {
+                query = query.gte('created_at', startOfMonth);
+            }
+
+            const { data, error } = await query;
 
             if (error) throw error;
 
@@ -892,7 +906,6 @@ async function updateMonthlyReports() {
         }
 
         if (!dbData || dbData.length === 0) {
-            console.log("📊 [REPORT] Không có dữ liệu cảm biến để tổng hợp.");
             return;
         }
 
@@ -951,11 +964,11 @@ async function updateMonthlyReports() {
             const { error } = await supabase
                 .from('monthly_reports')
                 .upsert(report, { onConflict: 'month' });
-
+            
             if (error) {
                 console.error(`❌ [REPORT] Lỗi upsert cho tháng ${report.month}:`, error.message);
-            } else {
-                console.log(`✅ [REPORT] Đã cập nhật báo cáo tháng ${report.month}: Tổng=${report.total_energy}Wh, Quạt=${report.fan_energy}Wh, Đèn=${report.light_energy}Wh`);
+            } else if (fullSync) {
+                console.log(`✅ [REPORT] Đã đồng bộ lịch sử tháng ${report.month}: Tổng=${report.total_energy}Wh, Quạt=${report.fan_energy}Wh, Đèn=${report.light_energy}Wh`);
             }
         }
     } catch (err) {
@@ -963,11 +976,13 @@ async function updateMonthlyReports() {
     }
 }
 
-// Khởi chạy hàm cập nhật báo cáo hằng tháng ngay khi bật server
-updateMonthlyReports();
+// Khởi chạy hàm cập nhật báo cáo hằng tháng ngay khi bật server (Đồng bộ lịch sử)
+updateMonthlyReports(true);
 
-// Thiết lập chạy định kỳ mỗi 10 phút (600000 ms)
-setInterval(updateMonthlyReports, 600000);
+// Thiết lập chạy định kỳ mỗi 10 giây cho THÁNG HIỆN TẠI (Real-time) để tối ưu hiệu năng
+setInterval(() => {
+    updateMonthlyReports(false);
+}, 10000);
 
 // Lấy báo cáo điện năng tiêu thụ theo từng tháng (Total, Fan, Light) từ bảng monthly_reports
 app.get('/api/monthly-report', async (req, res) => {
