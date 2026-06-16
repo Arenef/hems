@@ -58,7 +58,7 @@ let fanState = "AUTO";   // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let tempThreshold = 30.0; // Ngưỡng nhiệt độ bật quạt tự động
 let dailyEnergyLimit = 100.0; // Ngưỡng giới hạn điện năng tiêu thụ trong ngày (Wh)
 let energyLimitAlarmActive = false;
-let energyLimitDismissedToday = false; // Người dùng đã tắt cảnh báo vượt ngưỡng trong ngày
+let energyLimitDismissedAt = 0; // Timestamp (ms) của lần cuối người dùng tắt cảnh báo
 let preAlarmLightState = null;
 let preAlarmFanState = null;
 let latestEnergyTodayWh = 0.0;
@@ -91,7 +91,7 @@ async function getTodayBaselineEnergy() {
     }
 
     // Ngày mới => Reset trạng thái tắt cảnh báo
-    energyLimitDismissedToday = false;
+    energyLimitDismissedAt = 0;
 
     // Thời điểm 00:00:00 của ngày hôm nay (theo giờ Việt Nam, chuyển đổi về UTC để truy vấn database)
     const startOfToday = new Date(Date.UTC(year, vnTime.getUTCMonth(), vnTime.getUTCDate(), 0, 0, 0) - (7 * 3600000));
@@ -517,8 +517,8 @@ function broadcastDeviceState() {
 function checkEnergyLimitStatus() {
     if (latestEnergyTodayWh > dailyEnergyLimit) {
         if (!energyLimitAlarmActive) {
-            // Nếu người dùng đã tắt cảnh báo trong ngày, không kích hoạt lại
-            if (energyLimitDismissedToday) return;
+            // Nếu người dùng đã tắt cảnh báo trong vòng 30 giây qua, không kích hoạt lại
+            if (Date.now() - energyLimitDismissedAt < 30000) return;
 
             // Lưu trạng thái thiết bị trước khi ép tắt
             preAlarmLightState = lightState;
@@ -530,8 +530,8 @@ function checkEnergyLimitStatus() {
             console.log(`⚠️ [LIMIT] Kích hoạt báo động vượt giới hạn. Đã lưu trạng thái trước đó: Light=${preAlarmLightState}, Fan=${preAlarmFanState}`);
             broadcastDeviceState();
         } else {
-            // Nếu người dùng đã tắt cảnh báo, không ép tắt thiết bị nữa
-            if (energyLimitDismissedToday) return;
+            // Nếu người dùng đã tắt cảnh báo trong vòng 30 giây qua, không ép tắt thiết bị nữa
+            if (Date.now() - energyLimitDismissedAt < 30000) return;
 
             // Vẫn đang trong trạng thái báo động, nếu người dùng lỡ tay bật thiết bị thủ công, ta vẫn ép tắt
             if (lightState !== "OFF" || fanState !== "OFF") {
@@ -544,7 +544,7 @@ function checkEnergyLimitStatus() {
         // Nếu trước đó đang báo động nhưng giờ đã hạ xuống dưới ngưỡng (ví dụ: người dùng nâng giới hạn)
         if (energyLimitAlarmActive) {
             energyLimitAlarmActive = false;
-            energyLimitDismissedToday = false;
+            energyLimitDismissedAt = 0;
 
             // Khôi phục lại trạng thái ban đầu của thiết bị
             if (preAlarmLightState !== null) lightState = preAlarmLightState;
@@ -1357,7 +1357,7 @@ app.post('/api/config', (req, res) => {
 
 // API tắt cảnh báo vượt ngưỡng điện năng ngày (người dùng xác nhận đã biết)
 app.post('/api/dismiss-energy-alarm', (req, res) => {
-    energyLimitDismissedToday = true;
+    energyLimitDismissedAt = Date.now();
     energyLimitAlarmActive = false;
 
     // Khôi phục lại trạng thái thiết bị trước khi báo động
