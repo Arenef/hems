@@ -860,14 +860,16 @@ app.get('/api/history', async (req, res) => {
     }
 });
 
-// Lấy báo cáo điện năng tiêu thụ theo từng tháng (Total, Fan, Light)
-app.get('/api/monthly-report', async (req, res) => {
+// Hàm tổng hợp báo cáo tháng và lưu vào bảng monthly_reports trên Supabase
+async function updateMonthlyReports() {
     try {
+        console.log("📊 [REPORT] Bắt đầu tổng hợp và cập nhật báo cáo điện năng hằng tháng...");
         let dbData = [];
         let from = 0;
         let to = 999;
         let hasMore = true;
 
+        // Tải toàn bộ dữ liệu từ bảng sensor_data để tổng hợp
         while (hasMore) {
             const { data, error } = await supabase
                 .from('sensor_data')
@@ -890,7 +892,8 @@ app.get('/api/monthly-report', async (req, res) => {
         }
 
         if (!dbData || dbData.length === 0) {
-            return res.json({ success: true, data: [] });
+            console.log("📊 [REPORT] Không có dữ liệu cảm biến để tổng hợp.");
+            return;
         }
 
         // Gom nhóm các bản ghi theo tháng (YYYY-MM)
@@ -903,13 +906,13 @@ app.get('/api/monthly-report', async (req, res) => {
             monthlyGroups[key].push(row);
         });
 
-        const report = [];
+        const reportsToUpsert = [];
 
-        Object.keys(monthlyGroups).sort().forEach(monthKey => {
+        Object.keys(monthlyGroups).forEach(monthKey => {
             const rows = monthlyGroups[monthKey];
             if (rows.length === 0) return;
 
-            // Tổng điện năng tiêu thụ: max_energy - min_energy (Wh) theo đơn vị Wh lưu trên DB
+            // Tổng điện năng tiêu thụ: max_energy - min_energy (Wh)
             const energies = rows.map(r => r.energy || 0);
             const maxEnergy = Math.max(...energies);
             const minEnergy = Math.min(...energies);
@@ -934,17 +937,59 @@ app.get('/api/monthly-report', async (req, res) => {
                 }
             }
 
-            report.push({
+            reportsToUpsert.push({
                 month: monthKey,
-                totalEnergy: totalEnergyWh,
-                fanEnergy: Number(fanEnergyWh.toFixed(4)),
-                lightEnergy: Number(lightEnergyWh.toFixed(4))
+                total_energy: totalEnergyWh,
+                fan_energy: Number(fanEnergyWh.toFixed(4)),
+                light_energy: Number(lightEnergyWh.toFixed(4)),
+                updated_at: new Date().toISOString()
             });
         });
 
-        res.json({ success: true, data: report });
+        // Thực hiện lưu từng bản ghi vào Supabase bằng upsert
+        for (const report of reportsToUpsert) {
+            const { error } = await supabase
+                .from('monthly_reports')
+                .upsert(report, { onConflict: 'month' });
+
+            if (error) {
+                console.error(`❌ [REPORT] Lỗi upsert cho tháng ${report.month}:`, error.message);
+            } else {
+                console.log(`✅ [REPORT] Đã cập nhật báo cáo tháng ${report.month}: Tổng=${report.total_energy}Wh, Quạt=${report.fan_energy}Wh, Đèn=${report.light_energy}Wh`);
+            }
+        }
     } catch (err) {
-        console.error('❌ Lỗi tính báo cáo theo tháng:', err.message);
+        console.error("❌ [REPORT] Lỗi trong hàm updateMonthlyReports:", err.message);
+    }
+}
+
+// Khởi chạy hàm cập nhật báo cáo hằng tháng ngay khi bật server
+updateMonthlyReports();
+
+// Thiết lập chạy định kỳ mỗi 10 phút (600000 ms)
+setInterval(updateMonthlyReports, 600000);
+
+// Lấy báo cáo điện năng tiêu thụ theo từng tháng (Total, Fan, Light) từ bảng monthly_reports
+app.get('/api/monthly-report', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('monthly_reports')
+            .select('*')
+            .order('month', { ascending: true });
+
+        if (error) throw error;
+
+        // Định dạng dữ liệu trả về tương thích với frontend
+        const formattedData = (data || []).map(row => ({
+            month: row.month,
+            totalEnergy: row.total_energy,
+            fanEnergy: row.fan_energy,
+            lightEnergy: row.light_energy
+        }));
+
+        res.json({ success: true, data: formattedData });
+    } catch (err) {
+        console.error('❌ Lỗi tải báo cáo theo tháng từ Supabase:', err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
