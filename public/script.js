@@ -383,7 +383,7 @@ socket.onmessage = (event) => {
         if (dataObj.history) {
             updateTable(dataObj.history);
             fetchAndRenderChart(activeFilter);
-            fetchAndRenderMonthlyReport(); // Tải và vẽ lại báo cáo điện năng tháng
+            fetchAndRenderMonthlyReport(true); // Tải và vẽ lại báo cáo điện năng tháng (force load)
         }
     } else if (dataObj.type === 'UPDATE_CONFIG') {
     }
