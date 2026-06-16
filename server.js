@@ -765,13 +765,31 @@ app.get('/api/history', async (req, res) => {
 // Lấy báo cáo điện năng tiêu thụ theo từng tháng (Total, Fan, Light)
 app.get('/api/monthly-report', async (req, res) => {
     try {
-        const { data: dbData, error } = await supabase
-            .from('sensor_data')
-            .select('created_at, energy, power, fan_power, light_power')
-            .order('id', { ascending: true })
-            .limit(100000);
+        let dbData = [];
+        let from = 0;
+        let to = 999;
+        let hasMore = true;
 
-        if (error) throw error;
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('sensor_data')
+                .select('created_at, energy, power, fan_power, light_power')
+                .order('id', { ascending: true })
+                .range(from, to);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                dbData = dbData.concat(data);
+                from += 1000;
+                to += 1000;
+                if (data.length < 1000) {
+                    hasMore = false;
+                }
+            } else {
+                hasMore = false;
+            }
+        }
 
         if (!dbData || dbData.length === 0) {
             return res.json({ success: true, data: [] });
@@ -854,18 +872,31 @@ app.get('/api/energy-history', async (req, res) => {
         }
 
         // Truy vấn dữ liệu từ Supabase (chỉ lấy created_at và energy để tối ưu)
-        const { data: dbData, error } = await supabase
-            .from('sensor_data')
-            .select('created_at, energy')
-            .gte('created_at', startDate.toISOString())
-            .order('id', { ascending: true })
-            .limit(100000);
+        let dbData = [];
+        let from = 0;
+        let to = 999;
+        let hasMore = true;
 
-        if (error) {
-            console.error('❌ Supabase error in /api/energy-history:', error.message);
-            // Gặp lỗi thì fallback sang mock data để tránh crash hoặc làm hỏng UI
-            const fallback = generateMockHistory(filter);
-            return res.json({ success: true, isMock: true, ...fallback });
+        while (hasMore) {
+            const { data, error } = await supabase
+                .from('sensor_data')
+                .select('created_at, energy')
+                .gte('created_at', startDate.toISOString())
+                .order('id', { ascending: true })
+                .range(from, to);
+
+            if (error) throw error;
+
+            if (data && data.length > 0) {
+                dbData = dbData.concat(data);
+                from += 1000;
+                to += 1000;
+                if (data.length < 1000) {
+                    hasMore = false;
+                }
+            } else {
+                hasMore = false;
+            }
         }
 
         // Nếu dữ liệu quá ít (< 3 dòng), dùng mock data
