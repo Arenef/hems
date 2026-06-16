@@ -63,6 +63,66 @@ let latestLightVoltage = 0.0;
 let latestLightCurrent = 0.0;
 let latestLightPower = 0.0;
 
+// Bộ nhớ đệm lưu lượng điện cơ sở đầu ngày (kWh)
+let todayBaselineEnergy = null;
+let baselineDateStr = "";
+
+// Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu ngày hôm nay
+async function getTodayBaselineEnergy() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const currentDateStr = `${year}-${month}-${day}`;
+
+    // Trả về giá trị trong cache nếu vẫn đang cùng một ngày
+    if (todayBaselineEnergy !== null && baselineDateStr === currentDateStr) {
+        return todayBaselineEnergy;
+    }
+
+    // Thời điểm 00:00:00 của ngày hôm nay (giờ địa phương)
+    const startOfToday = new Date(year, now.getMonth(), now.getDate(), 0, 0, 0, 0);
+
+    try {
+        // 1. Tìm bản ghi năng lượng cuối cùng của ngày hôm trước
+        const { data, error } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .lt('created_at', startOfToday.toISOString())
+            .order('id', { ascending: false })
+            .limit(1);
+
+        if (!error && data && data.length > 0 && data[0].energy !== null) {
+            todayBaselineEnergy = parseFloat(data[0].energy);
+            baselineDateStr = currentDateStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu ngày (${currentDateStr}): ${todayBaselineEnergy} kWh`);
+            return todayBaselineEnergy;
+        }
+
+        // 2. Dự phòng: Nếu không có bản ghi hôm qua, lấy bản ghi đầu tiên của hôm nay
+        const { data: firstData, error: firstError } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .gte('created_at', startOfToday.toISOString())
+            .order('id', { ascending: true })
+            .limit(1);
+
+        if (!firstError && firstData && firstData.length > 0 && firstData[0].energy !== null) {
+            todayBaselineEnergy = parseFloat(firstData[0].energy);
+            baselineDateStr = currentDateStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu ngày (${currentDateStr}): ${todayBaselineEnergy} kWh`);
+            return todayBaselineEnergy;
+        }
+    } catch (e) {
+        console.error("❌ Lỗi lấy mức năng lượng cơ sở đầu ngày từ Supabase:", e.message);
+    }
+
+    // Nếu không truy vấn được gì, mặc định là 0.0 nhưng không lưu cache đè giá trị cũ nếu đã có
+    todayBaselineEnergy = todayBaselineEnergy !== null ? todayBaselineEnergy : 0.0;
+    baselineDateStr = currentDateStr;
+    return todayBaselineEnergy;
+}
+
 /* ==========================
    SCHEDULES LOGIC
    ========================== */
@@ -166,6 +226,10 @@ wss.on('connection', async (ws) => {
         const initLightVoltage = initLightPower > 0 ? (latestLightVoltage || 3.65) : 0.0;
         const initLightCurrent = initLightPower > 0 ? (latestLightCurrent || Number((initLightPower / initLightVoltage).toFixed(4))) : 0.0;
 
+        const baseline = await getTodayBaselineEnergy();
+        const rawEnergy = currentSensor.energy || 0;
+        const energyToday = Math.max(0, rawEnergy - baseline);
+
         // Chuẩn bị payload INIT_DATA gửi cho Client
         const initPayload = {
             type: 'INIT_DATA',
@@ -175,8 +239,8 @@ wss.on('connection', async (ws) => {
                 voltage: currentSensor.voltage || 0,
                 current: currentSensor.current || 0,
                 power: currentSensor.power || 0,
-                energyToday: currentSensor.energy || 0,
-                costToday: Math.round((currentSensor.energy || 0) * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+                energyToday: energyToday,
+                costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
                 fanStatus: fanState,
                 lightStatus: lightState,
                 pir: currentSensor.pir || 0,
@@ -261,7 +325,11 @@ function broadcastDeviceState() {
 }
 
 // Hàm broadcast toàn bộ dữ liệu mới (bao gồm cảm biến và trạng thái)
-function broadcastFullUpdate(currentSensor, historyData) {
+async function broadcastFullUpdate(currentSensor, historyData) {
+    const baseline = await getTodayBaselineEnergy();
+    const rawEnergy = currentSensor.energy || 0;
+    const energyToday = Math.max(0, rawEnergy - baseline);
+
     const payload = JSON.stringify({
         type: 'UPDATE_DATA',
         current: {
@@ -270,8 +338,8 @@ function broadcastFullUpdate(currentSensor, historyData) {
             voltage: currentSensor.voltage,
             current: currentSensor.current,
             power: currentSensor.power,
-            energyToday: currentSensor.energy,
-            costToday: Math.round(currentSensor.energy * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+            energyToday: energyToday,
+            costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
             fanStatus: fanState,
             lightStatus: lightState,
             pir: currentSensor.pir,
@@ -466,7 +534,7 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             light_voltage: light_volt,
             light_current: light_curr
         };
-        broadcastFullUpdate(currentSensor, historyData || []);
+        await broadcastFullUpdate(currentSensor, historyData || []);
 
         // Phản hồi lệnh điều khiển lại cho ESP32 điều khiển thiết bị
         res.status(201).json({
