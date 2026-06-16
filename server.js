@@ -57,6 +57,11 @@ let lightState = "AUTO"; // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let fanState = "AUTO";   // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let tempThreshold = 30.0; // Ngưỡng nhiệt độ bật quạt tự động
 let dailyEnergyLimit = 100.0; // Ngưỡng giới hạn điện năng tiêu thụ trong ngày (Wh)
+let energyLimitAlarmActive = false;
+let energyLimitDismissedToday = false; // Người dùng đã tắt cảnh báo vượt ngưỡng trong ngày
+let preAlarmLightState = null;
+let preAlarmFanState = null;
+let latestEnergyTodayWh = 0.0;
 let latestFanVoltage = 0.0;
 let latestFanCurrent = 0.0;
 let latestFanPower = 0.0;
@@ -80,6 +85,9 @@ async function getTodayBaselineEnergy() {
     if (todayBaselineEnergy !== null && baselineDateStr === currentDateStr) {
         return todayBaselineEnergy;
     }
+
+    // Ngày mới => Reset trạng thái tắt cảnh báo
+    energyLimitDismissedToday = false;
 
     // Thời điểm 00:00:00 của ngày hôm nay (giờ địa phương)
     const startOfToday = new Date(year, now.getMonth(), now.getDate(), 0, 0, 0, 0);
@@ -409,7 +417,7 @@ wss.on('connection', async (ws) => {
                 fanCurrent: Number(initFanCurrent.toFixed(4)),
                 lightVoltage: Number(initLightVoltage.toFixed(2)),
                 lightCurrent: Number(initLightCurrent.toFixed(4)),
-                energyLimitExceeded: (energyToday * 1000 > dailyEnergyLimit)
+                energyLimitExceeded: energyLimitAlarmActive
             },
             config: {
                 tempThreshold: tempThreshold,
@@ -471,7 +479,8 @@ function broadcastDeviceState() {
         type: 'UPDATE_DATA',
         current: {
             fanStatus: fanState,
-            lightStatus: lightState
+            lightStatus: lightState,
+            energyLimitExceeded: energyLimitAlarmActive
         },
         config: {
             tempThreshold: tempThreshold,
@@ -484,6 +493,51 @@ function broadcastDeviceState() {
             client.send(payload);
         }
     });
+}
+
+// Hàm kiểm tra ngưỡng giới hạn điện năng và thực hiện ngắt thiết bị / khôi phục thiết bị
+function checkEnergyLimitStatus() {
+    if (latestEnergyTodayWh > dailyEnergyLimit) {
+        if (!energyLimitAlarmActive) {
+            // Nếu người dùng đã tắt cảnh báo trong ngày, không kích hoạt lại
+            if (energyLimitDismissedToday) return;
+
+            // Lưu trạng thái thiết bị trước khi ép tắt
+            preAlarmLightState = lightState;
+            preAlarmFanState = fanState;
+            energyLimitAlarmActive = true;
+
+            lightState = "OFF";
+            fanState = "OFF";
+            console.log(`⚠️ [LIMIT] Kích hoạt báo động vượt giới hạn. Đã lưu trạng thái trước đó: Light=${preAlarmLightState}, Fan=${preAlarmFanState}`);
+            broadcastDeviceState();
+        } else {
+            // Nếu người dùng đã tắt cảnh báo, không ép tắt thiết bị nữa
+            if (energyLimitDismissedToday) return;
+
+            // Vẫn đang trong trạng thái báo động, nếu người dùng lỡ tay bật thiết bị thủ công, ta vẫn ép tắt
+            if (lightState !== "OFF" || fanState !== "OFF") {
+                lightState = "OFF";
+                fanState = "OFF";
+                broadcastDeviceState();
+            }
+        }
+    } else {
+        // Nếu trước đó đang báo động nhưng giờ đã hạ xuống dưới ngưỡng (ví dụ: người dùng nâng giới hạn)
+        if (energyLimitAlarmActive) {
+            energyLimitAlarmActive = false;
+            energyLimitDismissedToday = false;
+
+            // Khôi phục lại trạng thái ban đầu của thiết bị
+            if (preAlarmLightState !== null) lightState = preAlarmLightState;
+            if (preAlarmFanState !== null) fanState = preAlarmFanState;
+            console.log(`✅ [LIMIT] Hạ báo động vượt giới hạn. Khôi phục trạng thái: Light=${lightState}, Fan=${fanState}`);
+
+            preAlarmLightState = null;
+            preAlarmFanState = null;
+            broadcastDeviceState();
+        }
+    }
 }
 
 // Hàm broadcast toàn bộ dữ liệu mới (bao gồm cảm biến và trạng thái)
@@ -523,7 +577,7 @@ async function broadcastFullUpdate(currentSensor, historyData) {
             fanCurrent: currentSensor.fan_current,
             lightVoltage: currentSensor.light_voltage,
             lightCurrent: currentSensor.light_current,
-            energyLimitExceeded: currentSensor.energyLimitExceeded || (energyToday * 1000 > dailyEnergyLimit)
+            energyLimitExceeded: energyLimitAlarmActive
         },
         config: {
             tempThreshold: tempThreshold,
@@ -594,7 +648,6 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
         const parsedPir = pir !== undefined ? parseInt(pir) : 0;
 
         // Kiểm tra vượt ngưỡng điện năng ngày (Wh) để tự động tắt quạt và đèn
-        let energyLimitExceeded = false;
         try {
             let latestEnergy = 0.0;
             const { data: latestData } = await supabase
@@ -606,17 +659,9 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
                 latestEnergy = parseFloat(latestData[0].energy);
             }
             const baseline = await getTodayBaselineEnergy();
-            const energyTodayWh = Math.max(0, latestEnergy - baseline) * 1000;
+            latestEnergyTodayWh = Math.max(0, latestEnergy - baseline) * 1000;
 
-            if (energyTodayWh > dailyEnergyLimit) {
-                energyLimitExceeded = true;
-                if (fanState !== "OFF" || lightState !== "OFF") {
-                    fanState = "OFF";
-                    lightState = "OFF";
-                    console.log(`⚠️ [LIMIT] Điện năng ngày (${energyTodayWh.toFixed(4)} Wh) vượt ngưỡng (${dailyEnergyLimit} Wh). Tự động tắt tất cả thiết bị.`);
-                    broadcastDeviceState();
-                }
-            }
+            checkEnergyLimitStatus();
         } catch (e) {
             console.error("Lỗi kiểm tra giới hạn điện năng:", e.message);
         }
@@ -737,7 +782,7 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             fan_current: fan_curr,
             light_voltage: light_volt,
             light_current: light_curr,
-            energyLimitExceeded: energyLimitExceeded
+            energyLimitExceeded: energyLimitAlarmActive
         };
         await broadcastFullUpdate(currentSensor, historyData || []);
 
@@ -1273,6 +1318,8 @@ app.post('/api/config', (req, res) => {
     }
     if (req.body.dailyEnergyLimit !== undefined) {
         dailyEnergyLimit = parseFloat(req.body.dailyEnergyLimit);
+        // Kiểm tra ngay lập tức trạng thái cảnh báo vượt giới hạn
+        checkEnergyLimitStatus();
     }
     console.log(`⚙️ Cập nhật cấu hình: Ngưỡng nhiệt độ = ${tempThreshold}°C, Giới hạn điện ngày = ${dailyEnergyLimit} Wh`);
 
@@ -1287,6 +1334,30 @@ app.post('/api/config', (req, res) => {
         tempThreshold: tempThreshold,
         dailyEnergyLimit: dailyEnergyLimit,
         message: message
+    });
+});
+
+// API tắt cảnh báo vượt ngưỡng điện năng ngày (người dùng xác nhận đã biết)
+app.post('/api/dismiss-energy-alarm', (req, res) => {
+    energyLimitDismissedToday = true;
+    energyLimitAlarmActive = false;
+
+    // Khôi phục lại trạng thái thiết bị trước khi báo động
+    if (preAlarmLightState !== null) lightState = preAlarmLightState;
+    if (preAlarmFanState !== null) fanState = preAlarmFanState;
+    console.log(`🔕 [LIMIT] Người dùng đã tắt cảnh báo vượt ngưỡng. Khôi phục trạng thái: Light=${lightState}, Fan=${fanState}`);
+
+    preAlarmLightState = null;
+    preAlarmFanState = null;
+
+    // Broadcast cập nhật trạng thái thiết bị cho tất cả client
+    broadcastDeviceState();
+
+    res.json({
+        success: true,
+        message: 'Đã tắt cảnh báo vượt ngưỡng điện năng ngày. Thiết bị đã được khôi phục.',
+        lightState: lightState,
+        fanState: fanState
     });
 });
 

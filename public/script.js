@@ -333,6 +333,24 @@ function dismissAlert() {
     stopSiren();
     document.getElementById('alert-banner').style.display = 'none';
     document.body.classList.remove('alarm-active-bg');
+
+    // Kiểm tra nếu là cảnh báo vượt giới hạn điện năng thì mới gọi API để server khôi phục thiết bị
+    const titleEl = document.getElementById('alert-title');
+    if (titleEl && titleEl.innerText.includes('điện năng')) {
+        fetch('/api/dismiss-energy-alarm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            console.log('🔕 [LIMIT] Phản hồi từ server khi tắt cảnh báo:', data);
+        })
+        .catch(err => {
+            console.error('❌ Lỗi gửi yêu cầu tắt cảnh báo đến server:', err);
+        });
+    }
 }
 
 function triggerEnergyLimitAlert(energyTodayWh, limitWh) {
@@ -460,6 +478,14 @@ function updateUI(current) {
 
         if (current.energyLimitExceeded) {
             triggerEnergyLimitAlert(energyWh, dailyEnergyLimit);
+        } else {
+            // Nếu cảnh báo không hoạt động, ẩn banner nếu nó đang hiện cảnh báo năng lượng
+            const banner = document.getElementById('alert-banner');
+            const title = document.getElementById('alert-title');
+            if (banner && title && title.innerText.includes('điện năng')) {
+                banner.style.display = 'none';
+                document.body.classList.remove('alarm-active-bg');
+            }
         }
     }
 
@@ -1589,5 +1615,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert("Vui lòng nhập ngưỡng hợp lệ!");
             }
         });
+    }
+
+    // Cấu hình nút tắt cảnh báo trên banner
+    const dismissBtn = document.getElementById('dismiss-alert-btn');
+    if (dismissBtn) {
+        dismissBtn.addEventListener('click', dismissAlert);
     }
 });
