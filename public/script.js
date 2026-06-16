@@ -153,6 +153,7 @@ let currentLightStatus = "AUTO";
 let pricePerWh = parseInt(localStorage.getItem('price-per-wh')) || 3000;
 let latestEnergyTodayWh = 0;
 let latestEnergyMonthWh = 0;
+let dailyEnergyLimit = 100.0;
 let currentFanPower = 0.0;
 let currentLightPower = 0.0;
 let currentFanVoltage = 0.0;
@@ -334,6 +335,22 @@ function dismissAlert() {
     document.body.classList.remove('alarm-active-bg');
 }
 
+function triggerEnergyLimitAlert(energyTodayWh, limitWh) {
+    document.getElementById('alert-banner').style.display = 'flex';
+    document.getElementById('alert-title').innerText = '⚠️ CẢNH BÁO: Vượt ngưỡng điện năng ngày!';
+    document.getElementById('alert-desc').innerText = `Điện năng tiêu thụ hôm nay (${energyTodayWh.toFixed(4)} Wh) đã vượt quá ngưỡng cho phép (${limitWh.toFixed(4)} Wh). Hệ thống đã tự động tắt toàn bộ thiết bị!`;
+    document.body.classList.add('alarm-active-bg');
+
+    // Đọc cảnh báo bằng giọng nói
+    speakVietnamese("Cảnh báo! Điện năng tiêu thụ hôm nay vượt ngưỡng cho phép. Hệ thống tự động tắt thiết bị.");
+
+    setTimeout(() => {
+        if (!isAlarmPlaying) {
+            document.body.classList.remove('alarm-active-bg');
+        }
+    }, 5000);
+}
+
 function updateConfigUI(config) {
     if (!config) return;
 
@@ -345,7 +362,11 @@ function updateConfigUI(config) {
         if (threshValEl) threshValEl.innerText = currentTempThreshold.toFixed(1);
     }
 
-    // Security mode logic removed
+    if (config.dailyEnergyLimit !== undefined) {
+        dailyEnergyLimit = parseFloat(config.dailyEnergyLimit);
+        const limitEl = document.getElementById('energy-limit');
+        if (limitEl) limitEl.value = dailyEnergyLimit;
+    }
 }
 
 // Lấy cấu hình từ máy chủ khi load trang
@@ -388,6 +409,9 @@ socket.onmessage = (event) => {
             fetchAndRenderMonthlyReport(true); // Tải và vẽ lại báo cáo điện năng tháng (force load)
         }
     } else if (dataObj.type === 'UPDATE_CONFIG') {
+        if (dataObj.config) {
+            updateConfigUI(dataObj.config);
+        }
     }
 };
 
@@ -433,6 +457,10 @@ function updateUI(current) {
         document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
         
         updateMonthlyBillEstimate();
+
+        if (current.energyLimitExceeded) {
+            triggerEnergyLimitAlert(energyWh, dailyEnergyLimit);
+        }
     }
 
     if (current.energyWeek !== undefined && current.energyWeek !== null) {
@@ -1525,6 +1553,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 fetchAndRenderMonthlyReport(true); // Cập nhật lại hóa đơn tháng theo giá mới ngay lập tức
             } else {
                 alert("Vui lòng nhập đơn giá hợp lệ!");
+            }
+        });
+    }
+
+    // Cấu hình ngưỡng giới hạn điện năng ngày
+    const limitInput = document.getElementById('energy-limit');
+    const saveLimitBtn = document.getElementById('btn-save-limit');
+
+    if (limitInput) {
+        limitInput.value = dailyEnergyLimit;
+    }
+
+    if (saveLimitBtn && limitInput) {
+        saveLimitBtn.addEventListener('click', async () => {
+            const newLimit = parseFloat(limitInput.value);
+            if (!isNaN(newLimit) && newLimit >= 0) {
+                try {
+                    const res = await fetch('/api/config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ dailyEnergyLimit: newLimit })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        alert(`Đã cập nhật ngưỡng giới hạn điện ngày: ${newLimit} Wh`);
+                    } else {
+                        alert(data.message || "Lỗi khi cập nhật cấu hình");
+                    }
+                } catch (err) {
+                    console.error('Lỗi lưu cấu hình giới hạn điện:', err);
+                    alert("Không thể kết nối đến máy chủ.");
+                }
+            } else {
+                alert("Vui lòng nhập ngưỡng hợp lệ!");
             }
         });
     }

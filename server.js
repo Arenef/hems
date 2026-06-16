@@ -56,6 +56,7 @@ const supabase = createClient(
 let lightState = "AUTO"; // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let fanState = "AUTO";   // Trạng thái điều khiển: "ON", "OFF", "AUTO"
 let tempThreshold = 30.0; // Ngưỡng nhiệt độ bật quạt tự động
+let dailyEnergyLimit = 100.0; // Ngưỡng giới hạn điện năng tiêu thụ trong ngày (Wh)
 let latestFanVoltage = 0.0;
 let latestFanCurrent = 0.0;
 let latestFanPower = 0.0;
@@ -407,10 +408,12 @@ wss.on('connection', async (ws) => {
                 fanVoltage: Number(initFanVoltage.toFixed(2)),
                 fanCurrent: Number(initFanCurrent.toFixed(4)),
                 lightVoltage: Number(initLightVoltage.toFixed(2)),
-                lightCurrent: Number(initLightCurrent.toFixed(4))
+                lightCurrent: Number(initLightCurrent.toFixed(4)),
+                energyLimitExceeded: (energyToday * 1000 > dailyEnergyLimit)
             },
             config: {
-                tempThreshold: tempThreshold
+                tempThreshold: tempThreshold,
+                dailyEnergyLimit: dailyEnergyLimit
             },
             weather: weather,
             history: (historyData || []).map(row => ({
@@ -471,7 +474,8 @@ function broadcastDeviceState() {
             lightStatus: lightState
         },
         config: {
-            tempThreshold: tempThreshold
+            tempThreshold: tempThreshold,
+            dailyEnergyLimit: dailyEnergyLimit
         }
     });
 
@@ -518,10 +522,12 @@ async function broadcastFullUpdate(currentSensor, historyData) {
             fanVoltage: currentSensor.fan_voltage,
             fanCurrent: currentSensor.fan_current,
             lightVoltage: currentSensor.light_voltage,
-            lightCurrent: currentSensor.light_current
+            lightCurrent: currentSensor.light_current,
+            energyLimitExceeded: currentSensor.energyLimitExceeded || (energyToday * 1000 > dailyEnergyLimit)
         },
         config: {
-            tempThreshold: tempThreshold
+            tempThreshold: tempThreshold,
+            dailyEnergyLimit: dailyEnergyLimit
         },
         history: historyData.map(row => ({
             timestamp: row.created_at
@@ -586,6 +592,34 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
         const parsedTemp = temperature !== undefined ? parseFloat(temperature) : null;
         const parsedHumi = humidity !== undefined ? parseFloat(humidity) : null;
         const parsedPir = pir !== undefined ? parseInt(pir) : 0;
+
+        // Kiểm tra vượt ngưỡng điện năng ngày (Wh) để tự động tắt quạt và đèn
+        let energyLimitExceeded = false;
+        try {
+            let latestEnergy = 0.0;
+            const { data: latestData } = await supabase
+                .from('sensor_data')
+                .select('energy')
+                .order('id', { ascending: false })
+                .limit(1);
+            if (latestData && latestData.length > 0 && latestData[0].energy !== null) {
+                latestEnergy = parseFloat(latestData[0].energy);
+            }
+            const baseline = await getTodayBaselineEnergy();
+            const energyTodayWh = Math.max(0, latestEnergy - baseline) * 1000;
+
+            if (energyTodayWh > dailyEnergyLimit) {
+                energyLimitExceeded = true;
+                if (fanState !== "OFF" || lightState !== "OFF") {
+                    fanState = "OFF";
+                    lightState = "OFF";
+                    console.log(`⚠️ [LIMIT] Điện năng ngày (${energyTodayWh.toFixed(4)} Wh) vượt ngưỡng (${dailyEnergyLimit} Wh). Tự động tắt tất cả thiết bị.`);
+                    broadcastDeviceState();
+                }
+            }
+        } catch (e) {
+            console.error("Lỗi kiểm tra giới hạn điện năng:", e.message);
+        }
 
         // Xác định trạng thái thiết bị dựa trên chế độ điều khiển
         const isFanActive = fanState === "ON" || (fanState === "AUTO" && parsedTemp !== null && parsedTemp > tempThreshold);
@@ -702,7 +736,8 @@ app.post(['/api/sensor', '/update-sensor'], async (req, res) => {
             fan_voltage: fan_volt,
             fan_current: fan_curr,
             light_voltage: light_volt,
-            light_current: light_curr
+            light_current: light_curr,
+            energyLimitExceeded: energyLimitExceeded
         };
         await broadcastFullUpdate(currentSensor, historyData || []);
 
@@ -1210,7 +1245,8 @@ function broadcastConfig() {
     const payload = JSON.stringify({
         type: 'UPDATE_CONFIG',
         config: {
-            tempThreshold: tempThreshold
+            tempThreshold: tempThreshold,
+            dailyEnergyLimit: dailyEnergyLimit
         }
     });
     clients.forEach(client => {
@@ -1226,7 +1262,8 @@ function broadcastConfig() {
 app.get('/api/config', (req, res) => {
     res.json({
         success: true,
-        tempThreshold: tempThreshold
+        tempThreshold: tempThreshold,
+        dailyEnergyLimit: dailyEnergyLimit
     });
 });
 
@@ -1234,7 +1271,10 @@ app.post('/api/config', (req, res) => {
     if (req.body.tempThreshold !== undefined) {
         tempThreshold = parseFloat(req.body.tempThreshold);
     }
-    console.log(`⚙️ Cập nhật cấu hình: Ngưỡng nhiệt độ = ${tempThreshold}°C`);
+    if (req.body.dailyEnergyLimit !== undefined) {
+        dailyEnergyLimit = parseFloat(req.body.dailyEnergyLimit);
+    }
+    console.log(`⚙️ Cập nhật cấu hình: Ngưỡng nhiệt độ = ${tempThreshold}°C, Giới hạn điện ngày = ${dailyEnergyLimit} Wh`);
 
     // Phát cập nhật cấu hình tới tất cả Web clients
     broadcastConfig();
@@ -1245,6 +1285,7 @@ app.post('/api/config', (req, res) => {
     res.json({
         success: true,
         tempThreshold: tempThreshold,
+        dailyEnergyLimit: dailyEnergyLimit,
         message: message
     });
 });
