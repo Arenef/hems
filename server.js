@@ -768,7 +768,8 @@ app.get('/api/monthly-report', async (req, res) => {
         const { data: dbData, error } = await supabase
             .from('sensor_data')
             .select('created_at, energy, power, fan_power, light_power')
-            .order('id', { ascending: true });
+            .order('id', { ascending: true })
+            .limit(100000);
 
         if (error) throw error;
 
@@ -857,7 +858,8 @@ app.get('/api/energy-history', async (req, res) => {
             .from('sensor_data')
             .select('created_at, energy')
             .gte('created_at', startDate.toISOString())
-            .order('id', { ascending: true });
+            .order('id', { ascending: true })
+            .limit(100000);
 
         if (error) {
             console.error('❌ Supabase error in /api/energy-history:', error.message);
