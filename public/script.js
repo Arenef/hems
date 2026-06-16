@@ -1046,21 +1046,21 @@ if (SpeechRecognition) {
 
         // Khớp lệnh cực nhạy bằng cách so khớp từ khóa ngay khi người dùng đang nói
         if (
-            result.includes('bật đèn') || 
-            result.includes('tắt đèn') || 
-            result.includes('bật quạt') || 
-            result.includes('tắt quạt') || 
-            result.includes('đèn tự động') || 
-            result.includes('quạt tự động') || 
-            result.includes('giao diện sáng') || 
-            result.includes('giao diện tối') || 
-            result.includes('thời tiết') || 
+            result.includes('bật đèn') ||
+            result.includes('tắt đèn') ||
+            result.includes('bật quạt') ||
+            result.includes('tắt quạt') ||
+            result.includes('đèn tự động') ||
+            result.includes('quạt tự động') ||
+            result.includes('giao diện sáng') ||
+            result.includes('giao diện tối') ||
+            result.includes('thời tiết') ||
             result.includes('báo cáo thời tiết')
         ) {
             commandExecuted = true;
             const statusText = document.getElementById('voice-status-text');
             if (statusText) statusText.innerText = `Lệnh: "${result}"`;
-            
+
             await executeVoiceCommand(result);
             recognition.stop(); // Tự động dừng ghi âm sau khi nhận được lệnh đúng
         } else if (isFinal) {
@@ -1428,27 +1428,27 @@ async function fetchAndRenderMonthlyReport(force = false) {
     try {
         const response = await fetch('/api/monthly-report');
         const resData = await response.json();
-        
+
         if (resData.success && resData.data) {
             const tbody = document.querySelector('#monthly-report-table tbody');
             if (!tbody) return;
-            
+
             tbody.innerHTML = "";
             resData.data.forEach(row => {
                 const tr = document.createElement('tr');
-                
+
                 // Định dạng tháng YYYY-MM sang dạng Tháng MM/YYYY
                 const parts = row.month.split('-');
                 const monthDisplay = parts.length === 2 ? `${parts[1]}/${parts[0]}` : row.month;
-                
+
                 // Tính toán tiền điện ước tính cho tháng này dựa trên đơn giá hiện tại
                 const estCost = Math.round(row.totalEnergy * pricePerWh);
-                
+
                 tr.innerHTML = `
                     <td><b>Tháng ${monthDisplay}</b></td>
-                    <td class="text-green"><b>${row.totalEnergy.toLocaleString('vi-VN')}</b> Wh</td>
-                    <td>${row.fanEnergy.toLocaleString('vi-VN')} Wh</td>
-                    <td>${row.lightEnergy.toLocaleString('vi-VN')} Wh</td>
+                    <td class="text-green"><b>${row.totalEnergy.toLocaleString('vi-VN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</b> Wh</td>
+                    <td>${row.fanEnergy.toLocaleString('vi-VN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} Wh</td>
+                    <td>${row.lightEnergy.toLocaleString('vi-VN', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} Wh</td>
                     <td class="text-blue"><b>${estCost.toLocaleString('vi-VN')}</b> VND</td>
                 `;
                 tbody.appendChild(tr);

@@ -360,10 +360,10 @@ wss.on('connection', async (ws) => {
         if (latestError) throw latestError;
         if (historyError) throw historyError;
 
-                const currentSensor = latestData && latestData.length > 0 ? latestData[0] : {};
+        const currentSensor = latestData && latestData.length > 0 ? latestData[0] : {};
         const weather = await getWeatherData();
 
-                const initFanPower = currentSensor.fan_power || 0.0;
+        const initFanPower = currentSensor.fan_power || 0.0;
         const initVoltage = currentSensor.voltage || 5.0;
         const initFanVoltage = initFanPower > 0 ? (latestFanVoltage || initVoltage) : 0.0;
         const initFanCurrent = initFanPower > 0 ? (latestFanCurrent || Number((initFanPower / initFanVoltage).toFixed(4))) : 0.0;
@@ -815,7 +815,7 @@ app.get('/api/monthly-report', async (req, res) => {
             const energies = rows.map(r => r.energy || 0);
             const maxEnergy = Math.max(...energies);
             const minEnergy = Math.min(...energies);
-            const totalEnergyWh = Number((maxEnergy - minEnergy).toFixed(2));
+            const totalEnergyWh = Number(((maxEnergy - minEnergy) * 1000).toFixed(4));
 
             // Tích phân công suất tiêu thụ của quạt và đèn theo thời gian (Wh)
             let fanEnergyWh = 0;
@@ -839,8 +839,8 @@ app.get('/api/monthly-report', async (req, res) => {
             report.push({
                 month: monthKey,
                 totalEnergy: totalEnergyWh,
-                fanEnergy: Number(fanEnergyWh.toFixed(2)),
-                lightEnergy: Number(lightEnergyWh.toFixed(2))
+                fanEnergy: Number(fanEnergyWh.toFixed(4)),
+                lightEnergy: Number(lightEnergyWh.toFixed(4))
             });
         });
 
