@@ -1126,8 +1126,8 @@ if (SpeechRecognition) {
         let result = "";
         let isFinal = false;
 
-        // Tổng hợp kết quả từ đầu vào giọng nói
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
+        // Tổng hợp kết quả từ TOÀN BỘ đầu vào giọng nói từ đầu phiên nói
+        for (let i = 0; i < event.results.length; ++i) {
             result += event.results[i][0].transcript;
             if (event.results[i].isFinal) {
                 isFinal = true;
@@ -1139,16 +1139,15 @@ if (SpeechRecognition) {
 
         // Khớp lệnh cực nhạy bằng cách so khớp từ khóa ngay khi người dùng đang nói
         if (
-            result.includes('bật đèn') ||
-            result.includes('tắt đèn') ||
-            result.includes('bật quạt') ||
-            result.includes('tắt quạt') ||
-            result.includes('đèn tự động') ||
-            result.includes('quạt tự động') ||
-            result.includes('giao diện sáng') ||
-            result.includes('giao diện tối') ||
-            result.includes('thời tiết') ||
-            result.includes('báo cáo thời tiết')
+            result.includes('bật đèn') || result.includes('mở đèn') || result.includes('sáng đèn') || result.includes('bật bóng đèn') || result.includes('mở bóng đèn') ||
+            result.includes('tắt đèn') || result.includes('tắt bóng đèn') || result.includes('cúp đèn') ||
+            result.includes('bật quạt') || result.includes('mở quạt') || result.includes('bật quạt lên') || result.includes('mở quạt lên') ||
+            result.includes('tắt quạt') || result.includes('tắt quạt đi') ||
+            result.includes('đèn tự động') || result.includes('tự động đèn') ||
+            result.includes('quạt tự động') || result.includes('tự động quạt') ||
+            result.includes('giao diện sáng') || result.includes('chế độ sáng') ||
+            result.includes('giao diện tối') || result.includes('chế độ tối') ||
+            result.includes('thời tiết') || result.includes('báo cáo thời tiết') || result.includes('dự báo thời tiết')
         ) {
             commandExecuted = true;
             const statusText = document.getElementById('voice-status-text');
@@ -1200,19 +1199,19 @@ async function executeVoiceCommand(command) {
         await toggleDeviceVoice('fan', 'OFF');
     } else if (command.includes('tắt đèn chế độ tự động')) {
         await toggleDeviceVoice('light', 'OFF');
-    } else if (command.includes('bật quạt chế độ tự động') || command.includes('quạt tự động')) {
+    } else if (command.includes('bật quạt chế độ tự động') || command.includes('quạt tự động') || command.includes('tự động quạt')) {
         await toggleDeviceVoice('fan', 'AUTO');
-    } else if (command.includes('bật đèn chế độ tự động') || command.includes('đèn tự động')) {
+    } else if (command.includes('bật đèn chế độ tự động') || command.includes('đèn tự động') || command.includes('tự động đèn')) {
         await toggleDeviceVoice('light', 'AUTO');
-    } else if (command.includes('bật đèn')) {
+    } else if (command.includes('bật đèn') || command.includes('mở đèn') || command.includes('sáng đèn') || command.includes('bật bóng đèn') || command.includes('mở bóng đèn')) {
         await toggleDeviceVoice('light', 'ON');
-    } else if (command.includes('tắt đèn')) {
+    } else if (command.includes('tắt đèn') || command.includes('tắt bóng đèn') || command.includes('cúp đèn')) {
         await toggleDeviceVoice('light', 'OFF');
-    } else if (command.includes('bật quạt')) {
+    } else if (command.includes('bật quạt') || command.includes('mở quạt') || command.includes('bật quạt lên') || command.includes('mở quạt lên')) {
         await toggleDeviceVoice('fan', 'ON');
-    } else if (command.includes('tắt quạt')) {
+    } else if (command.includes('tắt quạt') || command.includes('tắt quạt đi')) {
         await toggleDeviceVoice('fan', 'OFF');
-    } else if (command.includes('thời tiết') || command.includes('báo cáo thời tiết')) {
+    } else if (command.includes('thời tiết') || command.includes('báo cáo thời tiết') || command.includes('dự báo thời tiết')) {
         triggerWeatherSpeech();
     } else {
         speakVietnamese("Lệnh điều khiển chưa chính xác, xin vui lòng thử lại.");
