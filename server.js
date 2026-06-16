@@ -76,9 +76,13 @@ let baselineDateStr = "";
 // Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu ngày hôm nay
 async function getTodayBaselineEnergy() {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
+    // Chuyển đổi thời gian sang múi giờ Việt Nam (GMT+7)
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const vnTime = new Date(utc + (3600000 * 7));
+
+    const year = vnTime.getUTCFullYear();
+    const month = String(vnTime.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(vnTime.getUTCDate()).padStart(2, '0');
     const currentDateStr = `${year}-${month}-${day}`;
 
     // Trả về giá trị trong cache nếu vẫn đang cùng một ngày
@@ -89,8 +93,8 @@ async function getTodayBaselineEnergy() {
     // Ngày mới => Reset trạng thái tắt cảnh báo
     energyLimitDismissedToday = false;
 
-    // Thời điểm 00:00:00 của ngày hôm nay (giờ địa phương)
-    const startOfToday = new Date(year, now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    // Thời điểm 00:00:00 của ngày hôm nay (theo giờ Việt Nam, chuyển đổi về UTC để truy vấn database)
+    const startOfToday = new Date(Date.UTC(year, vnTime.getUTCMonth(), vnTime.getUTCDate(), 0, 0, 0) - (7 * 3600000));
 
     try {
         // 1. Tìm bản ghi năng lượng cuối cùng của ngày hôm trước
@@ -139,10 +143,15 @@ let baselineWeekStr = "";
 // Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu tuần này (Thứ hai)
 async function getWeekBaselineEnergy() {
     const now = new Date();
-    // Tính ngày thứ Hai trong tuần hiện tại
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+    // Chuyển đổi thời gian sang múi giờ Việt Nam (GMT+7)
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const vnTime = new Date(utc + (3600000 * 7));
+
+    // Tính ngày thứ Hai trong tuần hiện tại theo giờ Việt Nam
+    const day = vnTime.getUTCDay();
+    const diff = vnTime.getUTCDate() - day + (day === 0 ? -6 : 1);
+    // startOfWeek đại diện cho 00:00:00 thứ Hai tuần này theo giờ Việt Nam
+    const startOfWeek = new Date(Date.UTC(vnTime.getUTCFullYear(), vnTime.getUTCMonth(), diff, 0, 0, 0) - (7 * 3600000));
     const currentWeekStr = startOfWeek.toISOString().split('T')[0];
 
     // Trả về giá trị trong cache nếu vẫn trong cùng một tuần
@@ -196,8 +205,13 @@ let baselineMonthStr = "";
 // Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu tháng này
 async function getMonthBaselineEnergy() {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // Chuyển đổi thời gian sang múi giờ Việt Nam (GMT+7)
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const vnTime = new Date(utc + (3600000 * 7));
+
+    // startOfMonth đại diện cho 00:00:00 ngày 1 của tháng này theo giờ Việt Nam
+    const startOfMonth = new Date(Date.UTC(vnTime.getUTCFullYear(), vnTime.getUTCMonth(), 1, 0, 0, 0) - (7 * 3600000));
+    const currentMonthStr = `${vnTime.getUTCFullYear()}-${String(vnTime.getUTCMonth() + 1).padStart(2, '0')}`;
 
     // Trả về giá trị trong cache nếu vẫn trong cùng một tháng
     if (monthBaselineEnergy !== null && baselineMonthStr === currentMonthStr) {
@@ -302,10 +316,14 @@ loadSchedules();
 // Vòng lặp kiểm tra lịch trình (chạy mỗi 5 giây)
 setInterval(() => {
     const now = new Date();
-    // Chuyển getDay() (Chủ nhật = 0, Thứ 2 = 1...) thành định dạng T2=2, ..., CN=8
-    let currentDayOfWeek = now.getDay() === 0 ? 8 : now.getDay() + 1;
-    const currentHourStr = String(now.getHours()).padStart(2, '0');
-    const currentMinuteStr = String(now.getMinutes()).padStart(2, '0');
+    // Chuyển đổi thời gian hiện tại sang múi giờ Việt Nam (GMT+7) để chạy chính xác trên môi trường deploy (như Render sử dụng giờ UTC)
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const vnTime = new Date(utc + (3600000 * 7));
+
+    // Chuyển getDay() (Chủ nhật = 0, Thứ 2 = 1...) thành định dạng T2=2, ..., CN=8 theo giờ Việt Nam
+    let currentDayOfWeek = vnTime.getUTCDay() === 0 ? 8 : vnTime.getUTCDay() + 1;
+    const currentHourStr = String(vnTime.getUTCHours()).padStart(2, '0');
+    const currentMinuteStr = String(vnTime.getUTCMinutes()).padStart(2, '0');
     const currentTimeStr = `${currentHourStr}:${currentMinuteStr}`;
 
     let needsBroadcast = false;
@@ -426,8 +444,8 @@ wss.on('connection', async (ws) => {
             weather: weather,
             history: (historyData || []).map(row => ({
                 timestamp: row.created_at
-                    ? new Date(row.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    : new Date().toLocaleTimeString('vi-VN'),
+                    ? new Date(row.created_at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    : new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
                 temp: row.temperature,
                 humid: row.humidity,
                 fan: fanState,
@@ -585,8 +603,8 @@ async function broadcastFullUpdate(currentSensor, historyData) {
         },
         history: historyData.map(row => ({
             timestamp: row.created_at
-                ? new Date(row.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                : new Date().toLocaleTimeString('vi-VN'),
+                ? new Date(row.created_at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                : new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
             temp: row.temperature,
             humid: row.humidity,
             fan: fanState,
@@ -1386,7 +1404,7 @@ async function getWeatherData() {
                 isDay: response.current.is_day,
                 weatherCode: response.current.weather_code,
                 windSpeed: response.current.wind_speed_10m,
-                updatedAt: new Date().toLocaleTimeString('vi-VN')
+                updatedAt: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
             };
             lastWeatherFetchTime = now;
         }
@@ -1400,7 +1418,7 @@ async function getWeatherData() {
                 isDay: 1,
                 weatherCode: 3, // Overcast
                 windSpeed: 8.5,
-                updatedAt: new Date().toLocaleTimeString('vi-VN'),
+                updatedAt: new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }),
                 isFallback: true
             };
         }
