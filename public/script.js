@@ -430,6 +430,23 @@ function updateUI(current) {
         document.getElementById('sum-bill').innerText = (calculatedCost * 30).toLocaleString('vi-VN');
     }
 
+    if (current.energyWeek !== undefined && current.energyWeek !== null) {
+        const energyWeekWh = Number((current.energyWeek * 1000).toFixed(2));
+        const weekEl = document.getElementById('sum-week');
+        if (weekEl) weekEl.innerText = energyWeekWh.toLocaleString('vi-VN');
+    }
+
+    if (current.energyMonth !== undefined && current.energyMonth !== null) {
+        const energyMonthWh = Number((current.energyMonth * 1000).toFixed(2));
+        const monthEl = document.getElementById('sum-month');
+        if (monthEl) monthEl.innerText = energyMonthWh.toLocaleString('vi-VN');
+    }
+
+    if (current.peakPower !== undefined && current.peakPower !== null) {
+        const peakEl = document.getElementById('sum-peak');
+        if (peakEl) peakEl.innerText = current.peakPower.toFixed(3);
+    }
+
     // Cập nhật trạng thái quạt / đèn trong cụm Control
     if (current.fanStatus) {
         currentFanStatus = current.fanStatus.toUpperCase();

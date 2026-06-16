@@ -123,6 +123,152 @@ async function getTodayBaselineEnergy() {
     return todayBaselineEnergy;
 }
 
+// Bộ nhớ đệm lưu lượng điện cơ sở đầu tuần (kWh)
+let weekBaselineEnergy = null;
+let baselineWeekStr = "";
+
+// Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu tuần này (Thứ hai)
+async function getWeekBaselineEnergy() {
+    const now = new Date();
+    // Tính ngày thứ Hai trong tuần hiện tại
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), diff, 0, 0, 0, 0);
+    const currentWeekStr = startOfWeek.toISOString().split('T')[0];
+
+    // Trả về giá trị trong cache nếu vẫn trong cùng một tuần
+    if (weekBaselineEnergy !== null && baselineWeekStr === currentWeekStr) {
+        return weekBaselineEnergy;
+    }
+
+    try {
+        // 1. Tìm bản ghi năng lượng cuối cùng trước đầu tuần này
+        const { data, error } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .lt('created_at', startOfWeek.toISOString())
+            .order('id', { ascending: false })
+            .limit(1);
+
+        if (!error && data && data.length > 0 && data[0].energy !== null) {
+            weekBaselineEnergy = parseFloat(data[0].energy);
+            baselineWeekStr = currentWeekStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu tuần (${currentWeekStr}): ${weekBaselineEnergy} kWh`);
+            return weekBaselineEnergy;
+        }
+
+        // 2. Dự phòng: Lấy bản ghi đầu tiên của tuần này
+        const { data: firstData, error: firstError } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .gte('created_at', startOfWeek.toISOString())
+            .order('id', { ascending: true })
+            .limit(1);
+
+        if (!firstError && firstData && firstData.length > 0 && firstData[0].energy !== null) {
+            weekBaselineEnergy = parseFloat(firstData[0].energy);
+            baselineWeekStr = currentWeekStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu tuần (${currentWeekStr}): ${weekBaselineEnergy} kWh`);
+            return weekBaselineEnergy;
+        }
+    } catch (e) {
+        console.error("❌ Lỗi lấy mức năng lượng cơ sở đầu tuần từ Supabase:", e.message);
+    }
+
+    weekBaselineEnergy = weekBaselineEnergy !== null ? weekBaselineEnergy : 0.0;
+    baselineWeekStr = currentWeekStr;
+    return weekBaselineEnergy;
+}
+
+// Bộ nhớ đệm lưu lượng điện cơ sở đầu tháng (kWh)
+let monthBaselineEnergy = null;
+let baselineMonthStr = "";
+
+// Hàm xác định mức điện năng tiêu thụ tích lũy tại thời điểm bắt đầu tháng này
+async function getMonthBaselineEnergy() {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Trả về giá trị trong cache nếu vẫn trong cùng một tháng
+    if (monthBaselineEnergy !== null && baselineMonthStr === currentMonthStr) {
+        return monthBaselineEnergy;
+    }
+
+    try {
+        // 1. Tìm bản ghi năng lượng cuối cùng trước đầu tháng này
+        const { data, error } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .lt('created_at', startOfMonth.toISOString())
+            .order('id', { ascending: false })
+            .limit(1);
+
+        if (!error && data && data.length > 0 && data[0].energy !== null) {
+            monthBaselineEnergy = parseFloat(data[0].energy);
+            baselineMonthStr = currentMonthStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu tháng (${currentMonthStr}): ${monthBaselineEnergy} kWh`);
+            return monthBaselineEnergy;
+        }
+
+        // 2. Dự phòng: Lấy bản ghi đầu tiên của tháng này
+        const { data: firstData, error: firstError } = await supabase
+            .from('sensor_data')
+            .select('energy')
+            .gte('created_at', startOfMonth.toISOString())
+            .order('id', { ascending: true })
+            .limit(1);
+
+        if (!firstError && firstData && firstData.length > 0 && firstData[0].energy !== null) {
+            monthBaselineEnergy = parseFloat(firstData[0].energy);
+            baselineMonthStr = currentMonthStr;
+            console.log(`🔋 [BASELINE] Đã cập nhật mức năng lượng cơ sở đầu tháng (${currentMonthStr}): ${monthBaselineEnergy} kWh`);
+            return monthBaselineEnergy;
+        }
+    } catch (e) {
+        console.error("❌ Lỗi lấy mức năng lượng cơ sở đầu tháng từ Supabase:", e.message);
+    }
+
+    monthBaselineEnergy = monthBaselineEnergy !== null ? monthBaselineEnergy : 0.0;
+    baselineMonthStr = currentMonthStr;
+    return monthBaselineEnergy;
+}
+
+// Bộ nhớ đệm công suất đỉnh (Watts)
+let cachedPeakPower = null;
+
+// Hàm xác định và cập nhật công suất đỉnh tiêu thụ (Watts)
+async function getPeakPower(newPowerWatts = null) {
+    if (cachedPeakPower === null) {
+        try {
+            // Lấy công suất cao nhất từ trước đến nay trong bảng
+            const { data, error } = await supabase
+                .from('sensor_data')
+                .select('power')
+                .order('power', { ascending: false })
+                .limit(1);
+
+            if (!error && data && data.length > 0 && data[0].power !== null) {
+                cachedPeakPower = parseFloat(data[0].power);
+                console.log(`⚡ [PEAK] Đã cập nhật công suất đỉnh lịch sử từ DB: ${cachedPeakPower} W`);
+            } else {
+                cachedPeakPower = 0.0;
+            }
+        } catch (e) {
+            console.error("❌ Lỗi lấy công suất đỉnh lịch sử từ Supabase:", e.message);
+            cachedPeakPower = 0.0;
+        }
+    }
+
+    // Nếu nhận được công suất mới lớn hơn đỉnh cũ, cập nhật đỉnh mới
+    if (newPowerWatts !== null && newPowerWatts > cachedPeakPower) {
+        cachedPeakPower = newPowerWatts;
+        console.log(`⚡ [PEAK] Phát hiện công suất đỉnh mới: ${cachedPeakPower} W`);
+    }
+
+    return cachedPeakPower;
+}
+
 /* ==========================
    SCHEDULES LOGIC
    ========================== */
@@ -230,6 +376,15 @@ wss.on('connection', async (ws) => {
         const rawEnergy = currentSensor.energy || 0;
         const energyToday = Math.max(0, rawEnergy - baseline);
 
+        const weekBaseline = await getWeekBaselineEnergy();
+        const energyWeek = Math.max(0, rawEnergy - weekBaseline);
+
+        const monthBaseline = await getMonthBaselineEnergy();
+        const energyMonth = Math.max(0, rawEnergy - monthBaseline);
+
+        const peakPowerWatts = await getPeakPower(currentSensor.power);
+        const peakPowerkW = Number((peakPowerWatts / 1000).toFixed(4));
+
         // Chuẩn bị payload INIT_DATA gửi cho Client
         const initPayload = {
             type: 'INIT_DATA',
@@ -241,6 +396,9 @@ wss.on('connection', async (ws) => {
                 power: currentSensor.power || 0,
                 energyToday: energyToday,
                 costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+                energyWeek: energyWeek,
+                energyMonth: energyMonth,
+                peakPower: peakPowerkW,
                 fanStatus: fanState,
                 lightStatus: lightState,
                 pir: currentSensor.pir || 0,
@@ -330,6 +488,15 @@ async function broadcastFullUpdate(currentSensor, historyData) {
     const rawEnergy = currentSensor.energy || 0;
     const energyToday = Math.max(0, rawEnergy - baseline);
 
+    const weekBaseline = await getWeekBaselineEnergy();
+    const energyWeek = Math.max(0, rawEnergy - weekBaseline);
+
+    const monthBaseline = await getMonthBaselineEnergy();
+    const energyMonth = Math.max(0, rawEnergy - monthBaseline);
+
+    const peakPowerWatts = await getPeakPower(currentSensor.power);
+    const peakPowerkW = Number((peakPowerWatts / 1000).toFixed(4));
+
     const payload = JSON.stringify({
         type: 'UPDATE_DATA',
         current: {
@@ -340,6 +507,9 @@ async function broadcastFullUpdate(currentSensor, historyData) {
             power: currentSensor.power,
             energyToday: energyToday,
             costToday: Math.round(energyToday * 1000 * 3000), // Quy đổi tiền điện ảo 3,000 VND / Wh
+            energyWeek: energyWeek,
+            energyMonth: energyMonth,
+            peakPower: peakPowerkW,
             fanStatus: fanState,
             lightStatus: lightState,
             pir: currentSensor.pir,
