@@ -375,7 +375,10 @@ function updateConfigUI(config) {
     if (config.tempThreshold !== undefined) {
         currentTempThreshold = parseFloat(config.tempThreshold);
         const thresholdEl = document.getElementById('fan-threshold');
-        if (thresholdEl) thresholdEl.value = currentTempThreshold;
+        // Chỉ tự động cập nhật nếu người dùng không đang tương tác (focus) với thanh trượt
+        if (thresholdEl && document.activeElement !== thresholdEl) {
+            thresholdEl.value = currentTempThreshold;
+        }
         const threshValEl = document.getElementById('temp-thresh-val');
         if (threshValEl) threshValEl.innerText = currentTempThreshold.toFixed(1);
     }
@@ -383,7 +386,10 @@ function updateConfigUI(config) {
     if (config.dailyEnergyLimit !== undefined) {
         dailyEnergyLimit = parseFloat(config.dailyEnergyLimit);
         const limitEl = document.getElementById('energy-limit');
-        if (limitEl) limitEl.value = dailyEnergyLimit;
+        // Chỉ tự động cập nhật nếu người dùng không đang gõ (focus) trong ô nhập liệu
+        if (limitEl && document.activeElement !== limitEl) {
+            limitEl.value = dailyEnergyLimit;
+        }
     }
 }
 
