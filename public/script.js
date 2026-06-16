@@ -151,6 +151,8 @@ let currentPirState = 0;
 let currentFanStatus = "AUTO";
 let currentLightStatus = "AUTO";
 let pricePerWh = parseInt(localStorage.getItem('price-per-wh')) || 3000;
+let latestEnergyTodayWh = 0;
+let latestEnergyMonthWh = 0;
 let currentFanPower = 0.0;
 let currentLightPower = 0.0;
 let currentFanVoltage = 0.0;
@@ -422,13 +424,15 @@ function updateUI(current) {
     }
     if (current.energyToday !== undefined && current.energyToday !== null) {
         const energyWh = Number((current.energyToday * 1000).toFixed(4));
+        latestEnergyTodayWh = energyWh;
         document.getElementById('val-energy').innerText = energyWh;
         document.getElementById('sum-today').innerText = energyWh;
 
         // Tính chi phí dựa trên Wh và đơn giá người dùng cấu hình
         const calculatedCost = Math.round(energyWh * pricePerWh);
         document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
-        document.getElementById('sum-bill').innerText = (calculatedCost * 30).toLocaleString('vi-VN');
+        
+        updateMonthlyBillEstimate();
     }
 
     if (current.energyWeek !== undefined && current.energyWeek !== null) {
@@ -439,8 +443,11 @@ function updateUI(current) {
 
     if (current.energyMonth !== undefined && current.energyMonth !== null) {
         const energyMonthWh = Number((current.energyMonth * 1000).toFixed(2));
+        latestEnergyMonthWh = energyMonthWh;
         const monthEl = document.getElementById('sum-month');
         if (monthEl) monthEl.innerText = energyMonthWh.toLocaleString('vi-VN');
+        
+        updateMonthlyBillEstimate();
     }
 
     if (current.peakPower !== undefined && current.peakPower !== null) {
@@ -537,6 +544,32 @@ function updateUI(current) {
     const currentCurrent = parseFloat(document.getElementById('val-curr').innerText) || 0;
     const currentPower = parseFloat(document.getElementById('val-power').innerText) || 0;
     updateDeviceStats(currentVoltage, currentCurrent, currentPower, currentFanPower, currentLightPower, currentFanVoltage, currentFanCurrent, currentLightVoltage, currentLightCurrent);
+}
+
+// Hàm cập nhật Monthly Bill (Dự phóng dựa trên tiền thực tế từ đầu tháng đến hết hôm qua + dự báo hôm nay)
+function updateMonthlyBillEstimate() {
+    const sumBillEl = document.getElementById('sum-bill');
+    if (!sumBillEl) return;
+
+    const now = new Date();
+    const D = now.getDate();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const N = new Date(year, month + 1, 0).getDate();
+
+    // Lượng điện năng của những ngày trước (1 -> D-1)
+    const energyPriorWh = Math.max(0, latestEnergyMonthWh - latestEnergyTodayWh);
+    // Số ngày còn lại trong tháng (bao gồm cả hôm nay)
+    const remainingDays = N - D + 1;
+    // Điện năng dự phóng cho những ngày còn lại
+    const remainingEnergyWh = latestEnergyTodayWh * remainingDays;
+
+    // Tổng điện năng dự kiến cả tháng
+    const projectedMonthEnergyWh = energyPriorWh + remainingEnergyWh;
+
+    // Tính tiền điện dựa trên đơn giá
+    const estMonthlyBill = Math.round(projectedMonthEnergyWh * pricePerWh);
+    sumBillEl.innerText = estMonthlyBill.toLocaleString('vi-VN');
 }
 
 // Hàm phân bổ và hiển thị thông số điện năng cho quạt và đèn
@@ -1486,7 +1519,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const energyWh = parseFloat(currentEnergyEl.innerText) || 0;
                     const calculatedCost = Math.round(energyWh * pricePerWh);
                     document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
-                    document.getElementById('sum-bill').innerText = (calculatedCost * 30).toLocaleString('vi-VN');
+                    
+                    updateMonthlyBillEstimate();
                 }
                 fetchAndRenderMonthlyReport(true); // Cập nhật lại hóa đơn tháng theo giá mới ngay lập tức
             } else {
