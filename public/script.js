@@ -383,6 +383,7 @@ socket.onmessage = (event) => {
         if (dataObj.history) {
             updateTable(dataObj.history);
             fetchAndRenderChart(activeFilter);
+            fetchAndRenderMonthlyReport(); // Tải và vẽ lại báo cáo điện năng tháng
         }
     } else if (dataObj.type === 'UPDATE_CONFIG') {
     }
@@ -1414,9 +1415,54 @@ async function deleteSchedule(id) {
     }
 }
 
+let lastMonthlyReportFetchTime = 0;
+
+// Hàm tải dữ liệu báo cáo điện năng theo tháng và hiển thị lên bảng
+async function fetchAndRenderMonthlyReport(force = false) {
+    const now = Date.now();
+    if (!force && (now - lastMonthlyReportFetchTime < 10000)) {
+        return; // Throttling: bỏ qua nếu cách lần tải trước chưa đầy 10 giây
+    }
+    lastMonthlyReportFetchTime = now;
+
+    try {
+        const response = await fetch('/api/monthly-report');
+        const resData = await response.json();
+        
+        if (resData.success && resData.data) {
+            const tbody = document.querySelector('#monthly-report-table tbody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = "";
+            resData.data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                // Định dạng tháng YYYY-MM sang dạng Tháng MM/YYYY
+                const parts = row.month.split('-');
+                const monthDisplay = parts.length === 2 ? `${parts[1]}/${parts[0]}` : row.month;
+                
+                // Tính toán tiền điện ước tính cho tháng này dựa trên đơn giá hiện tại
+                const estCost = Math.round(row.totalEnergy * pricePerWh);
+                
+                tr.innerHTML = `
+                    <td><b>Tháng ${monthDisplay}</b></td>
+                    <td class="text-green"><b>${row.totalEnergy.toLocaleString('vi-VN')}</b> Wh</td>
+                    <td>${row.fanEnergy.toLocaleString('vi-VN')} Wh</td>
+                    <td>${row.lightEnergy.toLocaleString('vi-VN')} Wh</td>
+                    <td class="text-blue"><b>${estCost.toLocaleString('vi-VN')}</b> VND</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+    } catch (err) {
+        console.error('Lỗi khi tải báo cáo tháng:', err);
+    }
+}
+
 // Gọi load lịch khi trang tải xong
 document.addEventListener('DOMContentLoaded', () => {
     fetchSchedules();
+    fetchAndRenderMonthlyReport(true); // Tải báo cáo điện năng tháng đầu tiên (force load)
 
     // Cấu hình đơn giá điện từ localStorage
     const priceInput = document.getElementById('price-per-wh');
@@ -1442,6 +1488,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     document.getElementById('val-cost').innerText = calculatedCost.toLocaleString('vi-VN');
                     document.getElementById('sum-bill').innerText = (calculatedCost * 30).toLocaleString('vi-VN');
                 }
+                fetchAndRenderMonthlyReport(true); // Cập nhật lại hóa đơn tháng theo giá mới ngay lập tức
             } else {
                 alert("Vui lòng nhập đơn giá hợp lệ!");
             }

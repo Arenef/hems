@@ -762,6 +762,75 @@ app.get('/api/history', async (req, res) => {
     }
 });
 
+// Lấy báo cáo điện năng tiêu thụ theo từng tháng (Total, Fan, Light)
+app.get('/api/monthly-report', async (req, res) => {
+    try {
+        const { data: dbData, error } = await supabase
+            .from('sensor_data')
+            .select('created_at, energy, power, fan_power, light_power')
+            .order('id', { ascending: true });
+
+        if (error) throw error;
+
+        if (!dbData || dbData.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        // Gom nhóm các bản ghi theo tháng (YYYY-MM)
+        const monthlyGroups = {};
+        dbData.forEach(row => {
+            if (!row.created_at) return;
+            const d = new Date(row.created_at);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (!monthlyGroups[key]) monthlyGroups[key] = [];
+            monthlyGroups[key].push(row);
+        });
+
+        const report = [];
+
+        Object.keys(monthlyGroups).sort().forEach(monthKey => {
+            const rows = monthlyGroups[monthKey];
+            if (rows.length === 0) return;
+
+            // Tổng điện năng tiêu thụ: max_energy - min_energy (Wh) theo đơn vị Wh lưu trên DB
+            const energies = rows.map(r => r.energy || 0);
+            const maxEnergy = Math.max(...energies);
+            const minEnergy = Math.min(...energies);
+            const totalEnergyWh = Number((maxEnergy - minEnergy).toFixed(2));
+
+            // Tích phân công suất tiêu thụ của quạt và đèn theo thời gian (Wh)
+            let fanEnergyWh = 0;
+            let lightEnergyWh = 0;
+
+            for (let i = 1; i < rows.length; i++) {
+                const t1 = new Date(rows[i - 1].created_at);
+                const t2 = new Date(rows[i].created_at);
+                const dtHours = (t2 - t1) / (1000 * 60 * 60);
+
+                // Giới hạn khoảng thời gian tối đa 5 phút (0.083 giờ) để tránh sai số đột biến khi server bị ngắt quãng
+                if (dtHours > 0 && dtHours < 0.083) {
+                    const fanPwr = rows[i].fan_power !== undefined && rows[i].fan_power !== null ? parseFloat(rows[i].fan_power) : 0;
+                    const lightPwr = rows[i].light_power !== undefined && rows[i].light_power !== null ? parseFloat(rows[i].light_power) : 0;
+
+                    fanEnergyWh += fanPwr * dtHours;
+                    lightEnergyWh += lightPwr * dtHours;
+                }
+            }
+
+            report.push({
+                month: monthKey,
+                totalEnergy: totalEnergyWh,
+                fanEnergy: Number(fanEnergyWh.toFixed(2)),
+                lightEnergy: Number(lightEnergyWh.toFixed(2))
+            });
+        });
+
+        res.json({ success: true, data: report });
+    } catch (err) {
+        console.error('❌ Lỗi tính báo cáo theo tháng:', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 // Lấy lịch sử điện năng tiêu thụ gộp nhóm (Hourly, Daily, Monthly, Yearly)
 app.get('/api/energy-history', async (req, res) => {
