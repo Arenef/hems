@@ -314,8 +314,17 @@ function triggerIntruderAlert(message) {
 }
 
 function triggerOverloadAlert(power) {
-    document.getElementById('alert-banner').style.display = 'flex';
-    document.getElementById('alert-title').innerText = '⚠️ CẢNH BÁO: Quá tải hệ thống!';
+    const banner = document.getElementById('alert-banner');
+    const title = document.getElementById('alert-title');
+
+    // Nếu cảnh báo quá tải đang hiển thị sẵn, chỉ cập nhật số liệu công suất
+    if (banner.style.display === 'flex' && title && title.innerText.includes('quá tải')) {
+        document.getElementById('alert-desc').innerText = `Tổng công suất tiêu thụ (${power}W) vượt ngưỡng an toàn (150W). Vui lòng tắt bớt thiết bị!`;
+        return;
+    }
+
+    banner.style.display = 'flex';
+    title.innerText = '⚠️ CẢNH BÁO: Quá tải hệ thống!';
     document.getElementById('alert-desc').innerText = `Tổng công suất tiêu thụ (${power}W) vượt ngưỡng an toàn (150W). Vui lòng tắt bớt thiết bị!`;
     document.body.classList.add('alarm-active-bg');
 
@@ -354,8 +363,17 @@ function dismissAlert() {
 }
 
 function triggerEnergyLimitAlert(energyTodayWh, limitWh) {
-    document.getElementById('alert-banner').style.display = 'flex';
-    document.getElementById('alert-title').innerText = '⚠️ CẢNH BÁO: Vượt ngưỡng điện năng ngày!';
+    const banner = document.getElementById('alert-banner');
+    const title = document.getElementById('alert-title');
+
+    // Nếu cảnh báo vượt ngưỡng đang hiển thị sẵn, chỉ cập nhật số liệu Wh
+    if (banner.style.display === 'flex' && title && title.innerText.includes('ngưỡng')) {
+        document.getElementById('alert-desc').innerText = `Điện năng tiêu thụ hôm nay (${energyTodayWh.toFixed(4)} Wh) đã vượt quá ngưỡng cho phép (${limitWh.toFixed(4)} Wh). Hệ thống đã tự động tắt toàn bộ thiết bị!`;
+        return;
+    }
+
+    banner.style.display = 'flex';
+    title.innerText = '⚠️ CẢNH BÁO: Vượt ngưỡng điện năng ngày!';
     document.getElementById('alert-desc').innerText = `Điện năng tiêu thụ hôm nay (${energyTodayWh.toFixed(4)} Wh) đã vượt quá ngưỡng cho phép (${limitWh.toFixed(4)} Wh). Hệ thống đã tự động tắt toàn bộ thiết bị!`;
     document.body.classList.add('alarm-active-bg');
 
